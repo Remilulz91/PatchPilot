@@ -1,29 +1,33 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PatchPilot — Connexion</title>
+  <title>PatchPilot — Login</title>
   <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/i18n.js"></script>
 </head>
 <body>
   <div class="auth-wrap">
     <form class="auth-card" id="login-form">
-      <h1>Patch<span style="color:#38bdf8">Pilot</span></h1>
-      <p class="sub">Gestion centralisée des mises à jour</p>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <h1>Patch<span style="color:#38bdf8">Pilot</span></h1>
+        <button type="button" class="secondary small" id="lang-toggle">FR</button>
+      </div>
+      <p class="sub" data-i18n="subtitle"></p>
 
-      <label for="username">Nom d'utilisateur</label>
+      <label for="username" data-i18n="username"></label>
       <input id="username" autocomplete="username" required>
 
-      <label for="password">Mot de passe</label>
+      <label for="password" data-i18n="password"></label>
       <input id="password" type="password" autocomplete="current-password" required>
 
       <div id="totp-block" style="display:none">
-        <label for="totp">Code MFA (6 chiffres)</label>
+        <label for="totp" data-i18n="mfa_code"></label>
         <input id="totp" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
       </div>
 
-      <button type="submit" class="full">Se connecter</button>
+      <button type="submit" class="full" data-i18n="sign_in"></button>
       <p class="error-msg" id="error"></p>
     </form>
   </div>
@@ -50,16 +54,16 @@
           body: JSON.stringify(body),
         });
         const data = await r.json();
-        if (!r.ok) { errEl.textContent = data.detail || 'Erreur'; return; }
+        if (!r.ok) { errEl.textContent = tServer(data.detail) || t('error'); return; }
         if (data.mfa_code_required) {
           totpBlock.style.display = 'block';
           document.getElementById('totp').focus();
-          errEl.textContent = 'Saisissez votre code MFA.';
+          errEl.textContent = t('enter_mfa');
           return;
         }
         window.location.href = data.redirect || '/';
       } catch {
-        errEl.textContent = 'Erreur réseau';
+        errEl.textContent = t('network_error');
       }
     });
   </script>

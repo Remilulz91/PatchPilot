@@ -1,4 +1,4 @@
-"""PatchPilot - Couche base de données (SQLite, requêtes paramétrées uniquement)."""
+"""PatchPilot - Database layer (SQLite, parameterized queries only)."""
 import os
 import sqlite3
 from contextlib import contextmanager

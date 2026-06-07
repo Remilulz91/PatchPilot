@@ -1,7 +1,7 @@
-"""Création du compte administrateur (utilisé par install.sh).
+"""Create the administrator account (used by install.sh).
 
-Usage : ADMIN_USERNAME=... ADMIN_PASSWORD=... python -m app.create_admin
-(variables d'environnement pour ne pas exposer le mot de passe dans `ps`)
+Usage: ADMIN_USERNAME=... ADMIN_PASSWORD=... python -m app.create_admin
+(environment variables so the password never shows up in `ps`)
 """
 import os
 import sys
@@ -14,18 +14,18 @@ def main():
     username = os.environ.get("ADMIN_USERNAME", "").strip()
     password = os.environ.get("ADMIN_PASSWORD", "")
     if not username or not password:
-        print("Erreur : définir ADMIN_USERNAME et ADMIN_PASSWORD", file=sys.stderr)
+        print("Error: ADMIN_USERNAME and ADMIN_PASSWORD must be set", file=sys.stderr)
         sys.exit(1)
     if len(password) < 10:
-        print("Erreur : mot de passe trop court (10 caractères minimum)", file=sys.stderr)
+        print("Error: password too short (10 characters minimum)", file=sys.stderr)
         sys.exit(1)
 
     init_db()
     if auth.get_user_by_name(username):
-        print(f"L'utilisateur '{username}' existe déjà, rien à faire.")
+        print(f"User '{username}' already exists, nothing to do.")
         return
     auth.create_user(username, password)
-    print(f"Administrateur '{username}' créé. Le MFA sera configuré au premier login.")
+    print(f"Administrator '{username}' created. MFA will be set up on first login.")
 
 
 if __name__ == "__main__":

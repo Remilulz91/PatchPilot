@@ -1,134 +1,135 @@
 #!/usr/bin/env bash
 #=============================================================================
-# PatchPilot — Script d'installation automatisé (Debian / Ubuntu)
+# PatchPilot — Automated installation script (Debian / Ubuntu)
 #
-# Usage : sudo bash install.sh   (à lancer depuis la racine du dépôt)
+# Usage: sudo bash install.sh   (run from the repository root)
 #
-# Ce script pose quelques questions, affiche un résumé, demande confirmation,
-# puis installe TOUT automatiquement (Python, nginx, systemd, certbot si HTTPS).
+# The script asks a few questions, shows a summary, asks for confirmation,
+# then installs EVERYTHING automatically (Python, nginx, systemd, certbot
+# when HTTPS is selected).
 #=============================================================================
 set -euo pipefail
 
 INSTALL_DIR="/opt/patchpilot"
 SERVICE_USER="patchpilot"
-APP_PORT="8744"   # port interne (uvicorn), derrière nginx
+APP_PORT="8744"   # internal port (uvicorn), behind nginx
 
 C_BLUE='\033[1;34m'; C_GREEN='\033[1;32m'; C_RED='\033[1;31m'; C_YELLOW='\033[1;33m'; C_RESET='\033[0m'
 info()  { echo -e "${C_BLUE}[INFO]${C_RESET} $*"; }
 ok()    { echo -e "${C_GREEN}[ OK ]${C_RESET} $*"; }
-err()   { echo -e "${C_RED}[ERREUR]${C_RESET} $*" >&2; }
+err()   { echo -e "${C_RED}[ERROR]${C_RESET} $*" >&2; }
 
-#--- Pré-requis -------------------------------------------------------------
-[[ $EUID -eq 0 ]] || { err "Ce script doit être lancé en root (sudo bash install.sh)"; exit 1; }
-[[ -f "requirements.txt" && -d "app" ]] || { err "Lancez ce script depuis la racine du dépôt PatchPilot."; exit 1; }
-command -v apt-get >/dev/null || { err "Ce script ne fonctionne que sur Debian / Ubuntu."; exit 1; }
+#--- Prerequisites -----------------------------------------------------------
+[[ $EUID -eq 0 ]] || { err "This script must be run as root (sudo bash install.sh)"; exit 1; }
+[[ -f "requirements.txt" && -d "app" ]] || { err "Run this script from the PatchPilot repository root."; exit 1; }
+command -v apt-get >/dev/null || { err "This script only works on Debian / Ubuntu."; exit 1; }
 
 echo ""
 echo -e "${C_BLUE}=============================================${C_RESET}"
-echo -e "${C_BLUE}      Installation de PatchPilot${C_RESET}"
+echo -e "${C_BLUE}        PatchPilot installation${C_RESET}"
 echo -e "${C_BLUE}=============================================${C_RESET}"
 echo ""
 
-#--- 1. Questions -----------------------------------------------------------
-# HTTP ou HTTPS
+#--- 1. Questions ------------------------------------------------------------
+# HTTP or HTTPS
 while true; do
-    read -rp "Mode d'accès au site [https/http] : " MODE
+    read -rp "Site access mode [https/http]: " MODE
     MODE=$(echo "$MODE" | tr '[:upper:]' '[:lower:]')
     [[ "$MODE" == "http" || "$MODE" == "https" ]] && break
-    echo "Réponse invalide. Tapez 'https' ou 'http'."
+    echo "Invalid answer. Type 'https' or 'http'."
 done
 
 if [[ "$MODE" == "https" ]]; then
     while true; do
-        read -rp "Nom de domaine (ex: patchpilot.mondomaine.fr) : " DOMAIN
+        read -rp "Domain name (e.g. patchpilot.mydomain.com): " DOMAIN
         [[ "$DOMAIN" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]] && break
-        echo "Nom de domaine invalide."
+        echo "Invalid domain name."
     done
-    read -rp "Email pour le certificat Let's Encrypt : " LE_EMAIL
+    read -rp "Email for the Let's Encrypt certificate: " LE_EMAIL
     SERVER_NAME="$DOMAIN"
     SITE_URL="https://$DOMAIN"
 else
     echo ""
-    echo "Adresses IP détectées sur cette machine :"
+    echo "IP addresses detected on this machine:"
     hostname -I | tr ' ' '\n' | grep -v '^$' | sed 's/^/   - /'
     echo ""
     while true; do
-        read -rp "Adresse IP à utiliser pour le site : " HOST_IP
+        read -rp "IP address to use for the site: " HOST_IP
         [[ "$HOST_IP" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] && break
-        echo "Adresse IP invalide."
+        echo "Invalid IP address."
     done
     SERVER_NAME="$HOST_IP"
     SITE_URL="http://$HOST_IP"
 fi
 
-# Compte administrateur du site
+# Site administrator account
 echo ""
 while true; do
-    read -rp "Nom d'utilisateur administrateur du site : " ADMIN_USER
+    read -rp "Site administrator username: " ADMIN_USER
     [[ -n "$ADMIN_USER" ]] && break
 done
 while true; do
-    read -rsp "Mot de passe administrateur (10 caractères min) : " ADMIN_PASS; echo ""
-    if [[ ${#ADMIN_PASS} -lt 10 ]]; then echo "Trop court (10 caractères minimum)."; continue; fi
-    read -rsp "Confirmez le mot de passe : " ADMIN_PASS2; echo ""
+    read -rsp "Administrator password (10 characters min): " ADMIN_PASS; echo ""
+    if [[ ${#ADMIN_PASS} -lt 10 ]]; then echo "Too short (10 characters minimum)."; continue; fi
+    read -rsp "Confirm password: " ADMIN_PASS2; echo ""
     [[ "$ADMIN_PASS" == "$ADMIN_PASS2" ]] && break
-    echo "Les mots de passe ne correspondent pas."
+    echo "Passwords do not match."
 done
 
-#--- 2. Résumé + validation -------------------------------------------------
+#--- 2. Summary + confirmation ------------------------------------------------
 echo ""
-echo -e "${C_YELLOW}=============== RÉSUMÉ DE L'INSTALLATION ===============${C_RESET}"
-echo "  Mode                  : $MODE"
+echo -e "${C_YELLOW}=============== INSTALLATION SUMMARY ===============${C_RESET}"
+echo "  Mode                 : $MODE"
 if [[ "$MODE" == "https" ]]; then
-echo "  Domaine               : $DOMAIN"
-echo "  Email Let's Encrypt   : $LE_EMAIL"
+echo "  Domain               : $DOMAIN"
+echo "  Let's Encrypt email  : $LE_EMAIL"
 else
-echo "  Adresse IP            : $HOST_IP"
+echo "  IP address           : $HOST_IP"
 fi
-echo "  URL du site           : $SITE_URL"
-echo "  Dossier d'install     : $INSTALL_DIR"
-echo "  Utilisateur système   : $SERVICE_USER (sans shell)"
-echo "  Admin du site         : $ADMIN_USER (MFA configuré au 1er login)"
+echo "  Site URL             : $SITE_URL"
+echo "  Install directory    : $INSTALL_DIR"
+echo "  System user          : $SERVICE_USER (no shell)"
+echo "  Site admin           : $ADMIN_USER (MFA set up on first login)"
 echo ""
-echo "  Sera installé/configuré automatiquement :"
-echo "   - Paquets : python3, python3-venv, nginx$([[ "$MODE" == "https" ]] && echo ', certbot')"
-echo "   - Application dans $INSTALL_DIR (environnement virtuel Python)"
-echo "   - Clé SSH ed25519 dédiée (à autoriser sur vos machines)"
-echo "   - Service systemd 'patchpilot' (démarrage automatique)"
-echo "   - Nginx en reverse proxy$([[ "$MODE" == "https" ]] && echo ' + certificat Let'"'"'s Encrypt')"
-echo -e "${C_YELLOW}========================================================${C_RESET}"
+echo "  Will be installed/configured automatically:"
+echo "   - Packages: python3, python3-venv, nginx$([[ "$MODE" == "https" ]] && echo ', certbot')"
+echo "   - Application in $INSTALL_DIR (Python virtual environment)"
+echo "   - Dedicated ed25519 SSH key (to authorize on your machines)"
+echo "   - systemd service 'patchpilot' (starts on boot)"
+echo "   - Nginx reverse proxy$([[ "$MODE" == "https" ]] && echo ' + Let'"'"'s Encrypt certificate')"
+echo -e "${C_YELLOW}====================================================${C_RESET}"
 echo ""
-read -rp "Confirmer l'installation ? [yes/no] : " CONFIRM
-[[ "$(echo "$CONFIRM" | tr '[:upper:]' '[:lower:]')" == "yes" ]] || { err "Installation annulée."; exit 1; }
+read -rp "Confirm installation? [yes/no]: " CONFIRM
+[[ "$(echo "$CONFIRM" | tr '[:upper:]' '[:lower:]')" == "yes" ]] || { err "Installation cancelled."; exit 1; }
 
-#--- 3. Installation --------------------------------------------------------
-info "Installation des paquets système..."
+#--- 3. Installation -----------------------------------------------------------
+info "Installing system packages..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq python3 python3-venv python3-pip nginx openssh-client >/dev/null
 [[ "$MODE" == "https" ]] && apt-get install -y -qq certbot python3-certbot-nginx >/dev/null
-ok "Paquets installés"
+ok "Packages installed"
 
-info "Création de l'utilisateur système '$SERVICE_USER'..."
+info "Creating system user '$SERVICE_USER'..."
 id -u "$SERVICE_USER" &>/dev/null || useradd --system --home "$INSTALL_DIR" --shell /usr/sbin/nologin "$SERVICE_USER"
 
-info "Copie de l'application vers $INSTALL_DIR..."
+info "Copying the application to $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
 cp -r app requirements.txt "$INSTALL_DIR/"
 mkdir -p "$INSTALL_DIR/data/keys"
 
-info "Création de l'environnement Python..."
+info "Creating the Python environment..."
 python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip
 "$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt"
-ok "Dépendances Python installées"
+ok "Python dependencies installed"
 
-info "Génération de la clé SSH dédiée (ed25519)..."
+info "Generating the dedicated SSH key (ed25519)..."
 if [[ ! -f "$INSTALL_DIR/data/keys/id_ed25519" ]]; then
     ssh-keygen -t ed25519 -N "" -C "patchpilot@$(hostname)" -f "$INSTALL_DIR/data/keys/id_ed25519" -q
 fi
 
-info "Création du compte administrateur du site..."
+info "Creating the site administrator account..."
 cd "$INSTALL_DIR"
 ADMIN_USERNAME="$ADMIN_USER" ADMIN_PASSWORD="$ADMIN_PASS" PATCHPILOT_DATA="$INSTALL_DIR/data" \
     "$INSTALL_DIR/venv/bin/python" -m app.create_admin
@@ -138,11 +139,11 @@ chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 chmod 700 "$INSTALL_DIR/data" "$INSTALL_DIR/data/keys"
 chmod 600 "$INSTALL_DIR/data/keys/id_ed25519"
 
-info "Création du service systemd..."
+info "Creating the systemd service..."
 COOKIE_SECURE=$([[ "$MODE" == "https" ]] && echo "1" || echo "0")
 cat > /etc/systemd/system/patchpilot.service <<EOF
 [Unit]
-Description=PatchPilot - Gestion centralisée des mises à jour
+Description=PatchPilot - Centralized update management
 After=network.target
 
 [Service]
@@ -165,9 +166,9 @@ WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
 systemctl enable --now patchpilot >/dev/null 2>&1
-ok "Service patchpilot démarré"
+ok "patchpilot service started"
 
-info "Configuration de nginx..."
+info "Configuring nginx..."
 cat > /etc/nginx/sites-available/patchpilot <<EOF
 server {
     listen 80;
@@ -178,7 +179,7 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        # WebSocket (logs en temps réel)
+        # WebSocket (real-time logs)
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -189,30 +190,30 @@ EOF
 ln -sf /etc/nginx/sites-available/patchpilot /etc/nginx/sites-enabled/patchpilot
 rm -f /etc/nginx/sites-enabled/default
 nginx -t -q && systemctl reload nginx
-ok "Nginx configuré"
+ok "Nginx configured"
 
 if [[ "$MODE" == "https" ]]; then
-    info "Obtention du certificat Let's Encrypt (le domaine doit pointer vers cette machine)..."
+    info "Requesting the Let's Encrypt certificate (the domain must point to this machine)..."
     certbot --nginx -d "$DOMAIN" -m "$LE_EMAIL" --agree-tos --non-interactive --redirect
-    ok "HTTPS activé avec redirection automatique"
+    ok "HTTPS enabled with automatic redirect"
 fi
 
-#--- 4. Fin -----------------------------------------------------------------
+#--- 4. Done -------------------------------------------------------------------
 PUBKEY=$(cat "$INSTALL_DIR/data/keys/id_ed25519.pub")
 echo ""
 echo -e "${C_GREEN}=============================================${C_RESET}"
-echo -e "${C_GREEN}   Installation terminée avec succès !${C_RESET}"
+echo -e "${C_GREEN}   Installation completed successfully!${C_RESET}"
 echo -e "${C_GREEN}=============================================${C_RESET}"
 echo ""
-echo "  Site web      : $SITE_URL"
-echo "  Connexion     : $ADMIN_USER (le MFA sera configuré au premier login)"
+echo "  Website     : $SITE_URL"
+echo "  Login       : $ADMIN_USER (MFA will be set up on first login)"
 echo ""
-echo "  Clé publique SSH de PatchPilot (aussi visible dans l'interface web) :"
+echo "  PatchPilot SSH public key (also visible in the web interface):"
 echo ""
 echo "    $PUBKEY"
 echo ""
-echo "  Sur CHAQUE machine à gérer, ajoutez cette clé :"
+echo "  On EACH machine to manage, authorize this key:"
 echo "    echo '$PUBKEY' >> ~/.ssh/authorized_keys"
 echo ""
-echo "  (Pour un utilisateur non-root, voir le README pour la config sudo NOPASSWD.)"
+echo "  (For a non-root user, see the README for the sudo NOPASSWD setup.)"
 echo ""

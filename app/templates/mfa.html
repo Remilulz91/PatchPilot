@@ -1,26 +1,29 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PatchPilot — Configuration MFA</title>
+  <title>PatchPilot — MFA setup</title>
   <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/i18n.js"></script>
 </head>
 <body>
   <div class="auth-wrap">
     <form class="auth-card" id="mfa-form">
-      <h1>Configuration du MFA</h1>
-      <p class="sub">Scannez ce QR code avec votre application d'authentification
-        (Google Authenticator, Authy, 2FAS…) puis saisissez le code généré.</p>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <h1 data-i18n="mfa_title"></h1>
+        <button type="button" class="secondary small" id="lang-toggle">FR</button>
+      </div>
+      <p class="sub" data-i18n="mfa_sub"></p>
 
-      <img class="qr" id="qr" width="200" height="200" alt="QR code MFA">
-      <p class="sub">Ou saisissez la clé manuellement :</p>
+      <img class="qr" id="qr" width="200" height="200" alt="MFA QR code">
+      <p class="sub" data-i18n="manual_key"></p>
       <p class="secret" id="secret"></p>
 
-      <label for="code">Code à 6 chiffres</label>
+      <label for="code" data-i18n="six_digit_code"></label>
       <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
 
-      <button type="submit" class="full">Activer le MFA</button>
+      <button type="submit" class="full" data-i18n="enable_mfa"></button>
       <p class="error-msg" id="error"></p>
     </form>
   </div>
@@ -45,7 +48,7 @@
         body: JSON.stringify({ code: document.getElementById('code').value.trim() }),
       });
       const data = await r.json();
-      if (!r.ok) { errEl.textContent = data.detail || 'Code invalide'; return; }
+      if (!r.ok) { errEl.textContent = tServer(data.detail) || t('invalid_code'); return; }
       window.location.href = data.redirect || '/';
     });
   </script>

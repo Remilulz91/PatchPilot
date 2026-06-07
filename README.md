@@ -1,84 +1,85 @@
 # PatchPilot 🛩️
 
-**Gestion centralisée des mises à jour de votre parc Linux, depuis une simple interface web.**
+**Centralized update management for your Linux fleet, from a simple web interface.**
 
-PatchPilot se connecte en SSH (par clé) à vos machines **Debian / Ubuntu** et exécute — et uniquement — ces trois commandes :
+PatchPilot connects to your **Debian / Ubuntu** machines over SSH (key-based) and runs — and only runs — these three commands:
 
 - `apt update`
 - `apt upgrade`
 - `apt full-upgrade`
 
-Mettez à jour une machine en un clic, ou tout le parc d'un coup, avec la sortie `apt` en temps réel dans votre navigateur.
+Update one machine with a single click, or the whole fleet at once, with real-time `apt` output in your browser.
 
-> 🔜 D'autres systèmes (RHEL/Rocky, openSUSE, Alpine…) seront pris en charge dans de futures versions.
+> 🔜 More operating systems (RHEL/Rocky, openSUSE, Alpine…) will be supported in future versions.
 
-## ✨ Fonctionnalités
+## ✨ Features
 
-- **Tableau de bord** : liste des machines, OS détecté, statut et date de la dernière mise à jour
-- **Mise à jour en un clic** : par machine, ou bouton « Tout mettre à jour » (exécution en parallèle)
-- **Logs en temps réel** : la sortie d'apt s'affiche en direct via WebSocket
-- **Connexion SSH par clé uniquement** : clé ed25519 dédiée, en root ou utilisateur avec sudo
-- **Sécurité** : authentification + **MFA TOTP** obligatoire (Google Authenticator, Authy…), mots de passe bcrypt, sessions serveur, anti brute-force, **liste blanche stricte de commandes** (aucune commande arbitraire ne peut être envoyée), requêtes SQL paramétrées
-- **Installation automatisée** : un seul script, quelques questions, et le site est en ligne (HTTP ou HTTPS avec Let's Encrypt)
+- **Dashboard**: machine list, detected OS, status and date of the last update
+- **One-click updates**: per machine, or an "Update all" button (parallel execution)
+- **Real-time logs**: apt output streams live to the browser via WebSocket
+- **Key-based SSH only**: dedicated ed25519 key, as root or a sudo-enabled user
+- **Language switch**: English / French interface (EN/FR button)
+- **Security**: login + mandatory **TOTP MFA** (Google Authenticator, Authy…), bcrypt password hashing, server-side sessions, brute-force protection, **strict command whitelist** (no arbitrary command can ever be sent), parameterized SQL queries
+- **Automated installation**: one script, a few questions, and the site is online (HTTP, or HTTPS with Let's Encrypt)
 
-## 📋 Prérequis
+## 📋 Requirements
 
-- Une machine **Debian 12+ ou Ubuntu 22.04+** pour héberger PatchPilot
-- Accès root sur cette machine
-- En HTTPS : un nom de domaine pointant vers la machine (ports 80/443 ouverts)
-- Les machines à gérer doivent être accessibles en SSH depuis le serveur PatchPilot
+- A **Debian 12+ or Ubuntu 22.04+** machine to host PatchPilot
+- Root access on that machine
+- For HTTPS: a domain name pointing to the machine (ports 80/443 open)
+- Managed machines must be reachable over SSH from the PatchPilot server
 
 ## 🚀 Installation
 
 ```bash
-git clone https://github.com/VOTRE_COMPTE/patchpilot.git
+git clone https://github.com/YOUR_ACCOUNT/patchpilot.git
 cd patchpilot
 sudo bash install.sh
 ```
 
-Le script vous demande :
+The script asks for:
 
-1. **Mode d'accès** : `https` (recommandé) ou `http`
-   - HTTPS → saisissez votre **nom de domaine** + un email (certificat Let's Encrypt automatique)
-   - HTTP → saisissez l'**adresse IP** de la machine à utiliser (la liste des IP détectées s'affiche)
-2. Le **compte administrateur** du site (nom d'utilisateur + mot de passe)
+1. **Access mode**: `https` (recommended) or `http`
+   - HTTPS → enter your **domain name** + an email (automatic Let's Encrypt certificate)
+   - HTTP → enter the **IP address** of the host machine to use (detected IPs are listed)
+2. The site **administrator account** (username + password)
 
-Un **résumé** complet s'affiche ensuite ; tapez `yes` pour valider et tout s'installe automatiquement : paquets, environnement Python, clé SSH dédiée, service systemd, nginx (et certificat si HTTPS). À la fin, vous n'avez plus qu'à ouvrir le site.
+A full **summary** is then displayed; type `yes` to confirm and everything installs automatically: packages, Python environment, dedicated SSH key, systemd service, nginx (and certificate for HTTPS). When it's done, just open the website.
 
-### Premier login
+### First login
 
-1. Connectez-vous avec le compte admin créé pendant l'installation
-2. Scannez le **QR code MFA** avec votre application d'authentification et validez le code
-3. Vous arrivez sur le tableau de bord
+1. Sign in with the admin account created during installation
+2. Scan the **MFA QR code** with your authenticator app and confirm the code
+3. You land on the dashboard
 
-## 🖥️ Ajouter des machines à gérer
+## 🖥️ Adding machines to manage
 
-1. Dans l'interface, cliquez sur **« Clé publique SSH »** et copiez la clé
-2. Sur chaque machine à gérer, ajoutez-la à l'utilisateur SSH choisi :
+1. In the interface, click **"SSH public key"** and copy the key
+2. On each machine to manage, authorize it for the chosen SSH user:
 
 ```bash
-# En root :
-echo 'ssh-ed25519 AAAA... patchpilot@serveur' >> /root/.ssh/authorized_keys
+# As root:
+echo 'ssh-ed25519 AAAA... patchpilot@server' >> /root/.ssh/authorized_keys
 
-# Ou pour un utilisateur classique :
-echo 'ssh-ed25519 AAAA... patchpilot@serveur' >> /home/UTILISATEUR/.ssh/authorized_keys
+# Or for a regular user:
+echo 'ssh-ed25519 AAAA... patchpilot@server' >> /home/USER/.ssh/authorized_keys
 ```
 
-3. **Si utilisateur non-root** : autorisez uniquement les 3 commandes apt en sudo sans mot de passe :
+3. **For a non-root user**: allow only the 3 apt commands via passwordless sudo:
 
 ```bash
-# Sur la machine à gérer, en root :
+# On the managed machine, as root:
 cat > /etc/sudoers.d/patchpilot <<'EOF'
-UTILISATEUR ALL=(root) NOPASSWD: /usr/bin/apt-get update, /usr/bin/apt-get upgrade -y, /usr/bin/apt-get full-upgrade -y
+USER ALL=(root) NOPASSWD: /usr/bin/apt-get update, /usr/bin/apt-get upgrade -y, /usr/bin/apt-get full-upgrade -y
 EOF
 chmod 440 /etc/sudoers.d/patchpilot
 ```
 
-4. Dans PatchPilot : **« + Ajouter une machine »** → nom, IP/hôte, port, utilisateur → **« Tester »** pour vérifier la connexion et détecter l'OS
+4. In PatchPilot: **"+ Add machine"** → name, IP/host, port, user → **"Test"** to check the connection and detect the OS
 
-> ℹ️ La migration de version majeure (ex : Debian 12 → 13) reste volontairement **manuelle** et hors périmètre de PatchPilot.
+> ℹ️ Major version migrations (e.g. Debian 12 → 13) are intentionally **manual** and out of PatchPilot's scope.
 
-## 🔄 Mettre à jour PatchPilot
+## 🔄 Updating PatchPilot
 
 ```bash
 cd patchpilot
@@ -92,24 +93,24 @@ sudo systemctl restart patchpilot
 ## 🛠️ Administration
 
 ```bash
-systemctl status patchpilot        # état du service
-journalctl -u patchpilot -f        # logs du service
-sudo systemctl restart patchpilot  # redémarrer
+systemctl status patchpilot        # service status
+journalctl -u patchpilot -f        # service logs
+sudo systemctl restart patchpilot  # restart
 ```
 
-Les données (base SQLite, clés SSH) sont dans `/opt/patchpilot/data/` — **à sauvegarder**, et à ne jamais publier sur GitHub (le dossier `data/` est dans le `.gitignore`).
+Data (SQLite database, SSH keys) lives in `/opt/patchpilot/data/` — **back it up**, and never publish it to GitHub (the `data/` folder is in `.gitignore`).
 
-## 🔒 Notes de sécurité
+## 🔒 Security notes
 
-- La clé privée SSH du parc est stockée sur le serveur PatchPilot : protégez cette machine comme un bastion (accès restreint, à jour, pare-feu)
-- La vérification des clés d'hôte SSH est désactivée par défaut (parc interne). Pour durcir : renseigner un fichier `known_hosts` dans `app/ssh_manager.py`
-- Préférez HTTPS ; en HTTP, réservez l'accès au réseau interne / VPN
-- Seules 3 commandes sont exécutables, codées en dur côté serveur — l'interface ne peut envoyer aucune commande arbitraire
+- The fleet's private SSH key is stored on the PatchPilot server: protect this machine like a bastion (restricted access, kept up to date, firewalled)
+- SSH host key verification is disabled by default (internal fleet). To harden: provide a `known_hosts` file in `app/ssh_manager.py`
+- Prefer HTTPS; with HTTP, restrict access to the internal network / VPN
+- Only 3 commands can be executed, hard-coded server-side — the interface cannot send any arbitrary command
 
-## 📦 Stack technique
+## 📦 Tech stack
 
-Python 3.10+ / FastAPI / asyncssh / SQLite / WebSocket — frontend HTML/CSS/JS sans dépendance.
+Python 3.10+ / FastAPI / asyncssh / SQLite / WebSocket — dependency-free HTML/CSS/JS frontend.
 
-## 📄 Licence
+## 📄 License
 
 MIT

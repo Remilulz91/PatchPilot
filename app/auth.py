@@ -1,4 +1,4 @@
-"""PatchPilot - Authentification : bcrypt + sessions serveur + MFA TOTP."""
+"""PatchPilot - Authentication: bcrypt + server-side sessions + TOTP MFA."""
 import hashlib
 import secrets
 import time
@@ -8,16 +8,16 @@ import pyotp
 
 from .database import get_db
 
-SESSION_LIFETIME = 12 * 3600  # 12 heures
+SESSION_LIFETIME = 12 * 3600  # 12 hours
 COOKIE_NAME = "pp_session"
 
-# Anti brute-force : 5 échecs => blocage 15 min (par IP)
+# Brute-force protection: 5 failures => 15 min lockout (per IP)
 MAX_ATTEMPTS = 5
 LOCKOUT_SECONDS = 900
 _failed: dict[str, list[float]] = {}
 
 
-# ---------- Mots de passe ----------
+# ---------- Passwords ----------
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12)).decode()
@@ -30,7 +30,7 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-# ---------- Anti brute-force ----------
+# ---------- Brute-force protection ----------
 
 def is_locked(ip: str) -> bool:
     now = time.time()
@@ -47,7 +47,7 @@ def clear_failures(ip: str):
     _failed.pop(ip, None)
 
 
-# ---------- Sessions (token aléatoire, stocké hashé en base) ----------
+# ---------- Sessions (random token, stored hashed in DB) ----------
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
@@ -65,7 +65,7 @@ def create_session(user_id: int, mfa_pending: bool) -> str:
 
 
 def get_session(token: str | None):
-    """Retourne (user_row, mfa_pending) ou None."""
+    """Return (user row + mfa_pending) or None."""
     if not token:
         return None
     with get_db() as db:
@@ -106,7 +106,7 @@ def verify_totp(secret: str, code: str) -> bool:
     return pyotp.TOTP(secret).verify(code, valid_window=1)
 
 
-# ---------- Utilisateurs ----------
+# ---------- Users ----------
 
 def create_user(username: str, password: str):
     with get_db() as db:

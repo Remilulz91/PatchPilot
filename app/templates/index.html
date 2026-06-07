@@ -1,83 +1,81 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PatchPilot — Tableau de bord</title>
+  <title>PatchPilot — Dashboard</title>
   <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/i18n.js"></script>
 </head>
 <body>
   <header>
     <h1>Patch<span>Pilot</span></h1>
     <div class="actions">
-      <button class="secondary small" id="btn-pubkey">Clé publique SSH</button>
-      <button class="secondary small" id="btn-logout">Déconnexion</button>
+      <button class="secondary small" id="lang-toggle">FR</button>
+      <button class="secondary small" id="btn-pubkey" data-i18n="ssh_pubkey"></button>
+      <button class="secondary small" id="btn-logout" data-i18n="logout"></button>
     </div>
   </header>
 
   <main>
     <div class="toolbar">
-      <button id="btn-add">+ Ajouter une machine</button>
+      <button id="btn-add" data-i18n="add_machine"></button>
       <span style="flex:1"></span>
-      <label style="color:var(--muted);font-size:.85rem">Action :</label>
+      <label style="color:var(--muted);font-size:.85rem" data-i18n="action"></label>
       <select id="global-action">
         <option value="update">apt update</option>
         <option value="upgrade">apt upgrade</option>
         <option value="full-upgrade">apt full-upgrade</option>
       </select>
-      <button id="btn-run-all">⟳ Tout mettre à jour</button>
+      <button id="btn-run-all" data-i18n="update_all"></button>
     </div>
 
     <table>
       <thead>
         <tr>
-          <th>Machine</th>
-          <th>OS</th>
-          <th>Statut</th>
-          <th>Dernière action</th>
-          <th>Actions</th>
+          <th data-i18n="th_machine"></th>
+          <th data-i18n="th_os"></th>
+          <th data-i18n="th_status"></th>
+          <th data-i18n="th_last"></th>
+          <th data-i18n="th_actions"></th>
         </tr>
       </thead>
       <tbody id="machines"></tbody>
     </table>
-    <div class="empty" id="empty" style="display:none">
-      Aucune machine. Cliquez sur « Ajouter une machine », puis autorisez la clé publique SSH de PatchPilot sur celle-ci.
-    </div>
+    <div class="empty" id="empty" style="display:none" data-i18n="empty"></div>
 
-    <div id="console"><div style="color:var(--muted)">— Console : la sortie apt s'affichera ici en temps réel —</div></div>
+    <div id="console"><div style="color:var(--muted)" data-i18n="console_hint"></div></div>
   </main>
 
-  <!-- Modal ajout machine -->
+  <!-- Add machine modal -->
   <div class="modal-bg" id="modal-add">
     <form class="modal" id="form-add">
-      <h2>Ajouter une machine</h2>
-      <label>Nom (libellé)</label>
+      <h2 data-i18n="add_title"></h2>
+      <label data-i18n="name_label"></label>
       <input id="m-name" required maxlength="64" placeholder="srv-web-01">
-      <label>Adresse IP ou nom d'hôte</label>
+      <label data-i18n="host_label"></label>
       <input id="m-host" required maxlength="255" placeholder="192.168.1.10">
-      <label>Port SSH</label>
+      <label data-i18n="port_label"></label>
       <input id="m-port" type="number" value="22" min="1" max="65535">
-      <label>Utilisateur SSH (root ou utilisateur avec sudo)</label>
+      <label data-i18n="user_label"></label>
       <input id="m-user" value="root" maxlength="32">
       <p class="error-msg" id="add-error"></p>
       <div class="btns">
-        <button type="button" class="secondary" data-close>Annuler</button>
-        <button type="submit">Ajouter</button>
+        <button type="button" class="secondary" data-close data-i18n="cancel"></button>
+        <button type="submit" data-i18n="add"></button>
       </div>
     </form>
   </div>
 
-  <!-- Modal clé publique -->
+  <!-- Public key modal -->
   <div class="modal-bg" id="modal-key">
     <div class="modal">
-      <h2>Clé publique SSH de PatchPilot</h2>
-      <p style="color:var(--muted);font-size:.85rem;margin-bottom:.6rem">
-        À ajouter dans <b>~/.ssh/authorized_keys</b> de l'utilisateur SSH sur chaque machine à gérer :
-      </p>
+      <h2 data-i18n="key_title"></h2>
+      <p style="color:var(--muted);font-size:.85rem;margin-bottom:.6rem" data-i18n="key_hint"></p>
       <pre id="pubkey">…</pre>
       <div class="btns">
-        <button class="secondary" id="btn-copy-key">Copier</button>
-        <button data-close>Fermer</button>
+        <button class="secondary" id="btn-copy-key" data-i18n="copy"></button>
+        <button data-close data-i18n="close"></button>
       </div>
     </div>
   </div>

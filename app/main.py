@@ -1,10 +1,10 @@
-"""PatchPilot - Application FastAPI : API, WebSocket et pages web."""
+"""PatchPilot - FastAPI application: API, WebSocket and web pages."""
 import asyncio
 import base64
 import io
 import ipaddress
+import os
 import re
-import secrets
 import time
 import uuid
 
@@ -16,8 +16,6 @@ from pydantic import BaseModel, Field, field_validator
 
 from . import auth, ssh_manager
 from .database import get_db, init_db
-
-import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 COOKIE_SECURE = os.environ.get("PATCHPILOT_COOKIE_SECURE", "0") == "1"
@@ -32,19 +30,19 @@ def _startup():
 
 
 # =====================================================================
-# Dépendances d'authentification
+# Authentication dependencies
 # =====================================================================
 
 def current_session(pp_session: str | None = Cookie(default=None)):
     row = auth.get_session(pp_session)
     if row is None:
-        raise HTTPException(status_code=401, detail="Non authentifié")
+        raise HTTPException(status_code=401, detail="Not authenticated")
     return row
 
 
 def current_user(row=Depends(current_session)):
     if row["mfa_pending"]:
-        raise HTTPException(status_code=401, detail="MFA requis")
+        raise HTTPException(status_code=401, detail="MFA required")
     return row
 
 
@@ -85,7 +83,7 @@ def mfa_page(row=Depends(current_session)):
 
 
 # =====================================================================
-# API : authentification
+# API: authentication
 # =====================================================================
 
 class LoginBody(BaseModel):
@@ -98,26 +96,26 @@ class LoginBody(BaseModel):
 def api_login(body: LoginBody, request: Request):
     ip = request.client.host if request.client else "?"
     if auth.is_locked(ip):
-        raise HTTPException(status_code=429, detail="Trop de tentatives. Réessayez dans 15 minutes.")
+        raise HTTPException(status_code=429, detail="Too many attempts. Try again in 15 minutes.")
 
     user = auth.get_user_by_name(body.username.strip())
     if user is None or not auth.verify_password(body.password, user["password_hash"]):
         auth.record_failure(ip)
-        raise HTTPException(status_code=401, detail="Identifiants invalides")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if user["totp_enabled"]:
         if not body.totp_code:
             return {"mfa_code_required": True}
         if not auth.verify_totp(user["totp_secret"], body.totp_code):
             auth.record_failure(ip)
-            raise HTTPException(status_code=401, detail="Code MFA invalide")
+            raise HTTPException(status_code=401, detail="Invalid MFA code")
         auth.clear_failures(ip)
         token = auth.create_session(user["id"], mfa_pending=False)
         resp = JSONResponse({"ok": True, "redirect": "/"})
         _set_session_cookie(resp, token)
         return resp
 
-    # Premier login : configuration du MFA obligatoire
+    # First login: MFA setup is mandatory
     auth.clear_failures(ip)
     token = auth.create_session(user["id"], mfa_pending=True)
     resp = JSONResponse({"ok": True, "redirect": "/mfa"})
@@ -128,7 +126,7 @@ def api_login(body: LoginBody, request: Request):
 @app.get("/api/mfa/qr")
 def api_mfa_qr(row=Depends(current_session)):
     if row["totp_enabled"]:
-        raise HTTPException(status_code=400, detail="MFA déjà activé")
+        raise HTTPException(status_code=400, detail="MFA already enabled")
     uri = auth.totp_uri(row["username"], row["totp_secret"])
     img = qrcode.make(uri)
     buf = io.BytesIO()
@@ -145,7 +143,7 @@ class MfaBody(BaseModel):
 def api_mfa_verify(body: MfaBody, row=Depends(current_session),
                    pp_session: str | None = Cookie(default=None)):
     if not auth.verify_totp(row["totp_secret"], body.code):
-        raise HTTPException(status_code=401, detail="Code invalide")
+        raise HTTPException(status_code=401, detail="Invalid code")
     if not row["totp_enabled"]:
         with get_db() as db:
             db.execute("UPDATE users SET totp_enabled = 1 WHERE id = ?", (row["id"],))
@@ -162,7 +160,7 @@ def api_logout(pp_session: str | None = Cookie(default=None)):
 
 
 # =====================================================================
-# API : machines
+# API: machines
 # =====================================================================
 
 HOSTNAME_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9.-]{0,253})$")
@@ -185,14 +183,14 @@ class MachineBody(BaseModel):
         except ValueError:
             pass
         if not HOSTNAME_RE.match(v):
-            raise ValueError("Hôte invalide (IP ou nom d'hôte attendu)")
+            raise ValueError("Invalid host (IP address or hostname expected)")
         return v
 
     @field_validator("username")
     @classmethod
     def check_username(cls, v: str) -> str:
         if not USERNAME_RE.match(v):
-            raise ValueError("Nom d'utilisateur Unix invalide")
+            raise ValueError("Invalid Unix username")
         return v
 
 
@@ -212,7 +210,7 @@ def api_add_machine(body: MachineBody, user=Depends(current_user)):
                 (body.name.strip(), body.host, body.port, body.username),
             )
         except Exception:
-            raise HTTPException(status_code=409, detail="Cette machine existe déjà")
+            raise HTTPException(status_code=409, detail="This machine already exists")
         return {"ok": True, "id": cur.lastrowid}
 
 
@@ -227,7 +225,7 @@ def _get_machine(machine_id: int):
     with get_db() as db:
         row = db.execute("SELECT * FROM machines WHERE id = ?", (machine_id,)).fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="Machine introuvable")
+        raise HTTPException(status_code=404, detail="Machine not found")
     return row
 
 
@@ -247,7 +245,7 @@ def api_public_key(user=Depends(current_user)):
 
 
 # =====================================================================
-# Jobs de mise à jour + WebSocket (logs en temps réel)
+# Update jobs + WebSocket (real-time logs)
 # =====================================================================
 
 jobs: dict[str, dict] = {}
@@ -295,7 +293,7 @@ class RunBody(BaseModel):
     @classmethod
     def check_action(cls, v: str) -> str:
         if v not in ssh_manager.ACTIONS:
-            raise ValueError("Action non autorisée")
+            raise ValueError("Action not allowed")
         return v
 
 
@@ -316,7 +314,7 @@ def _start_job(machine, action: str) -> str:
 async def api_run(machine_id: int, body: RunBody, user=Depends(current_user)):
     machine = _get_machine(machine_id)
     if _machine_busy(machine_id):
-        raise HTTPException(status_code=409, detail="Une mise à jour est déjà en cours sur cette machine")
+        raise HTTPException(status_code=409, detail="An update is already running on this machine")
     return {"ok": True, "job_id": _start_job(machine, body.action)}
 
 
@@ -342,7 +340,7 @@ async def ws_endpoint(websocket: WebSocket):
     ws_clients.add(websocket)
     try:
         while True:
-            await websocket.receive_text()  # keepalive / on ignore le contenu
+            await websocket.receive_text()  # keepalive / content ignored
     except WebSocketDisconnect:
         pass
     finally:
