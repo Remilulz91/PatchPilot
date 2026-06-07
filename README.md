@@ -113,4 +113,6 @@ Python 3.10+ / FastAPI / asyncssh / SQLite / WebSocket — dependency-free HTML/
 
 ## 📄 License
 
-MIT
+Copyright © 2026 Remilulz_91 — **All rights reserved.**
+
+This project is the exclusive property of its author. You may view the source code and use the software as-is, but copying, modifying, redistributing or claiming ownership of it, in whole or in part, is strictly prohibited without prior written permission. See [LICENSE](LICENSE).
