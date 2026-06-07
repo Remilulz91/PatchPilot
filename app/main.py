@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from . import auth, ssh_manager
 from .database import get_db, init_db
+from .version import GITHUB_REPO, VERSION
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 COOKIE_SECURE = os.environ.get("PATCHPILOT_COOKIE_SECURE", "0") == "1"
@@ -242,6 +243,54 @@ async def api_test_machine(machine_id: int, user=Depends(current_user)):
 @app.get("/api/public-key")
 def api_public_key(user=Depends(current_user)):
     return {"public_key": ssh_manager.get_public_key()}
+
+
+# =====================================================================
+# API: version / update check (against the latest GitHub release)
+# =====================================================================
+
+_version_cache = {"ts": 0.0, "latest": None}
+VERSION_CACHE_TTL = 3600  # check GitHub at most once per hour
+
+
+def _fetch_latest_release() -> str | None:
+    import json as _json
+    import urllib.request
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "PatchPilot"},
+    )
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return _json.load(r).get("tag_name")
+
+
+def _parse_version(v: str):
+    return tuple(int(x) for x in v.strip().lstrip("vV").split("."))
+
+
+@app.get("/api/version")
+async def api_version(user=Depends(current_user)):
+    now = time.time()
+    if now - _version_cache["ts"] > VERSION_CACHE_TTL:
+        try:
+            _version_cache["latest"] = await asyncio.to_thread(_fetch_latest_release)
+        except Exception:
+            _version_cache["latest"] = None
+        _version_cache["ts"] = now
+
+    latest = _version_cache["latest"]
+    up_to_date = None
+    if latest:
+        try:
+            up_to_date = _parse_version(VERSION) >= _parse_version(latest)
+        except ValueError:
+            up_to_date = None
+    return {
+        "version": VERSION,
+        "latest": latest,
+        "up_to_date": up_to_date,
+        "releases_url": f"https://github.com/{GITHUB_REPO}/releases",
+    }
 
 
 # =====================================================================

@@ -83,8 +83,36 @@ function render() {
   }
 }
 
+// ---------- Version / update check ----------
+
+let versionInfo = null;
+
+function renderVersion() {
+  const el = document.getElementById("version-badge");
+  if (!versionInfo) return;
+  el.style.display = "inline-block";
+  const v = versionInfo;
+  if (v.up_to_date === false) {
+    el.className = "badge running";
+    el.innerHTML = `<a href="${esc(v.releases_url)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">v${esc(v.version)} — ${esc(t("update_available", { v: v.latest }))}</a>`;
+  } else if (v.up_to_date === true) {
+    el.className = "badge success";
+    el.textContent = `v${v.version} — ${t("up_to_date")}`;
+  } else {
+    el.className = "badge idle";
+    el.textContent = `v${v.version}`;
+  }
+}
+
+async function loadVersion() {
+  try {
+    versionInfo = await api("GET", "/api/version");
+    renderVersion();
+  } catch { /* version check is best-effort */ }
+}
+
 // Re-render dynamic content when the language changes
-window.addEventListener("pp-lang", render);
+window.addEventListener("pp-lang", () => { render(); renderVersion(); });
 
 tbody.addEventListener("click", async (e) => {
   const btn = e.target.closest("button");
@@ -207,3 +235,4 @@ function connectWS() {
 // ---------- Init ----------
 
 loadMachines().then(connectWS).catch(() => {});
+loadVersion();

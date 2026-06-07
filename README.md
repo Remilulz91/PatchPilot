@@ -19,6 +19,7 @@ Update one machine with a single click, or the whole fleet at once, with real-ti
 - **Real-time logs**: apt output streams live to the browser via WebSocket
 - **Key-based SSH only**: dedicated ed25519 key, as root or a sudo-enabled user
 - **Language switch**: English / French interface (EN/FR button)
+- **Update check**: the dashboard shows whether your PatchPilot install is up to date against the latest GitHub release
 - **Security**: login + mandatory **TOTP MFA** (Google Authenticator, Authy…), bcrypt password hashing, server-side sessions, brute-force protection, **strict command whitelist** (no arbitrary command can ever be sent), parameterized SQL queries
 - **Automated installation**: one script, a few questions, and the site is online (HTTP, or HTTPS with Let's Encrypt)
 
@@ -32,7 +33,7 @@ Update one machine with a single click, or the whole fleet at once, with real-ti
 ## 🚀 Installation
 
 ```bash
-git clone https://github.com/YOUR_ACCOUNT/patchpilot.git
+git clone https://github.com/Remilulz91/patchpilot.git
 cd patchpilot
 sudo bash install.sh
 ```
@@ -113,6 +114,6 @@ Python 3.10+ / FastAPI / asyncssh / SQLite / WebSocket — dependency-free HTML/
 
 ## 📄 License
 
-Copyright © 2026 Remilulz_91 — **All rights reserved.**
+Copyright © 2026 Remilulz91 — **All rights reserved.**
 
-This project is the exclusive property of its author. You may view the source code and use the software as-is, but copying, modifying, redistributing or claiming ownership of it, in whole or in part, is strictly prohibited without prior written permission. See [LICENSE](LICENSE).
+You are free to **install and use** PatchPilot anywhere, including in companies and production environments. However, this project remains the exclusive property of its author: claiming ownership or redistributing it by any means other than sharing the official repository link (https://github.com/Remilulz91/patchpilot) is strictly prohibited. See [LICENSE](LICENSE).

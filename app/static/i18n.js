@@ -61,6 +61,8 @@ const I18N = {
     job_done: "✔ {action} finished",
     job_failed: "✖ failed: {err}",
     unknown_error: "unknown error",
+    up_to_date: "up to date",
+    update_available: "update available: {v}",
   },
   fr: {
     subtitle: "Gestion centralisée des mises à jour",
@@ -121,6 +123,8 @@ const I18N = {
     job_done: "✔ {action} terminé",
     job_failed: "✖ échec : {err}",
     unknown_error: "erreur inconnue",
+    up_to_date: "à jour",
+    update_available: "mise à jour disponible : {v}",
   },
 };
 

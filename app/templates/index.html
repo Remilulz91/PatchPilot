@@ -9,7 +9,10 @@
 </head>
 <body>
   <header>
-    <h1>Patch<span>Pilot</span></h1>
+    <div style="display:flex;align-items:center;gap:.8rem">
+      <h1>Patch<span>Pilot</span></h1>
+      <span class="badge idle" id="version-badge" style="display:none"></span>
+    </div>
     <div class="actions">
       <button class="secondary small" id="lang-toggle">FR</button>
       <button class="secondary small" id="btn-pubkey" data-i18n="ssh_pubkey"></button>
