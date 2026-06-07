@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PatchPilot — Configuration MFA</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="auth-wrap">
+    <form class="auth-card" id="mfa-form">
+      <h1>Configuration du MFA</h1>
+      <p class="sub">Scannez ce QR code avec votre application d'authentification
+        (Google Authenticator, Authy, 2FAS…) puis saisissez le code généré.</p>
+
+      <img class="qr" id="qr" width="200" height="200" alt="QR code MFA">
+      <p class="sub">Ou saisissez la clé manuellement :</p>
+      <p class="secret" id="secret"></p>
+
+      <label for="code">Code à 6 chiffres</label>
+      <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
+
+      <button type="submit" class="full">Activer le MFA</button>
+      <p class="error-msg" id="error"></p>
+    </form>
+  </div>
+
+  <script>
+    const errEl = document.getElementById('error');
+
+    (async () => {
+      const r = await fetch('/api/mfa/qr');
+      if (!r.ok) { window.location.href = '/'; return; }
+      const data = await r.json();
+      document.getElementById('qr').src = data.qr;
+      document.getElementById('secret').textContent = data.secret;
+    })();
+
+    document.getElementById('mfa-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errEl.textContent = '';
+      const r = await fetch('/api/mfa/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: document.getElementById('code').value.trim() }),
+      });
+      const data = await r.json();
+      if (!r.ok) { errEl.textContent = data.detail || 'Code invalide'; return; }
+      window.location.href = data.redirect || '/';
+    });
+  </script>
+</body>
+</html>

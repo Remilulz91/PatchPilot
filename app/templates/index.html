@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PatchPilot — Tableau de bord</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Patch<span>Pilot</span></h1>
+    <div class="actions">
+      <button class="secondary small" id="btn-pubkey">Clé publique SSH</button>
+      <button class="secondary small" id="btn-logout">Déconnexion</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="toolbar">
+      <button id="btn-add">+ Ajouter une machine</button>
+      <span style="flex:1"></span>
+      <label style="color:var(--muted);font-size:.85rem">Action :</label>
+      <select id="global-action">
+        <option value="update">apt update</option>
+        <option value="upgrade">apt upgrade</option>
+        <option value="full-upgrade">apt full-upgrade</option>
+      </select>
+      <button id="btn-run-all">⟳ Tout mettre à jour</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Machine</th>
+          <th>OS</th>
+          <th>Statut</th>
+          <th>Dernière action</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="machines"></tbody>
+    </table>
+    <div class="empty" id="empty" style="display:none">
+      Aucune machine. Cliquez sur « Ajouter une machine », puis autorisez la clé publique SSH de PatchPilot sur celle-ci.
+    </div>
+
+    <div id="console"><div style="color:var(--muted)">— Console : la sortie apt s'affichera ici en temps réel —</div></div>
+  </main>
+
+  <!-- Modal ajout machine -->
+  <div class="modal-bg" id="modal-add">
+    <form class="modal" id="form-add">
+      <h2>Ajouter une machine</h2>
+      <label>Nom (libellé)</label>
+      <input id="m-name" required maxlength="64" placeholder="srv-web-01">
+      <label>Adresse IP ou nom d'hôte</label>
+      <input id="m-host" required maxlength="255" placeholder="192.168.1.10">
+      <label>Port SSH</label>
+      <input id="m-port" type="number" value="22" min="1" max="65535">
+      <label>Utilisateur SSH (root ou utilisateur avec sudo)</label>
+      <input id="m-user" value="root" maxlength="32">
+      <p class="error-msg" id="add-error"></p>
+      <div class="btns">
+        <button type="button" class="secondary" data-close>Annuler</button>
+        <button type="submit">Ajouter</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal clé publique -->
+  <div class="modal-bg" id="modal-key">
+    <div class="modal">
+      <h2>Clé publique SSH de PatchPilot</h2>
+      <p style="color:var(--muted);font-size:.85rem;margin-bottom:.6rem">
+        À ajouter dans <b>~/.ssh/authorized_keys</b> de l'utilisateur SSH sur chaque machine à gérer :
+      </p>
+      <pre id="pubkey">…</pre>
+      <div class="btns">
+        <button class="secondary" id="btn-copy-key">Copier</button>
+        <button data-close>Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

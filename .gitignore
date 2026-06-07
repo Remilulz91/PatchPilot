@@ -1,0 +1,12 @@
+# Données locales (base, clés SSH, secrets) — ne JAMAIS versionner
+data/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Divers
+*.log
+.env
