@@ -132,6 +132,12 @@ def index(pp_session: str | None = Cookie(default=None)):
     return _page("index.html")
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return FileResponse(os.path.join(BASE_DIR, "static", "favicon.svg"),
+                        media_type="image/svg+xml")
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page():
     return _page("login.html")
