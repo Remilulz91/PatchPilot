@@ -43,9 +43,12 @@ async def security_headers(request: Request, call_next):
     resp.headers["X-Frame-Options"] = "DENY"
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["Referrer-Policy"] = "no-referrer"
+    # script-src stays strict ('self' only) — this is the key XSS defense.
+    # style-src allows inline style attributes (low risk, cannot execute JS),
+    # which the templates rely on (e.g. show/hide the MFA field).
     resp.headers["Content-Security-Policy"] = (
         "default-src 'self'; img-src 'self' data:; "
-        "style-src 'self'; script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self'; "
         "connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'none'"
     )
     if COOKIE_SECURE:
