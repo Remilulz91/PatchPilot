@@ -20,7 +20,7 @@ Update one machine with a single click, or the whole fleet at once, with real-ti
 - **Key-based SSH only**: dedicated ed25519 key, as root or a sudo-enabled user
 - **Language switch**: English / French interface (EN/FR button)
 - **Update check**: the dashboard shows whether your PatchPilot install is up to date against the latest GitHub release
-- **Security**: login + mandatory **TOTP MFA** (Google Authenticator, Authy…), bcrypt password hashing, server-side sessions, brute-force protection, **strict command whitelist** (no arbitrary command can ever be sent), parameterized SQL queries
+- **Security**: login + mandatory **TOTP MFA** (Google Authenticator, Authy…), bcrypt password hashing, server-side sessions with token rotation, **CSRF protection** (double-submit token + SameSite=Strict), **SSH host-key verification** (trust on first use), security headers (CSP, HSTS, X-Frame-Options), brute-force protection, **strict command whitelist** (no arbitrary command can ever be sent), parameterized SQL queries
 - **Automated installation**: one script, a few questions, and the site is online (HTTP, or HTTPS with Let's Encrypt)
 
 ## 📋 Requirements
@@ -104,7 +104,8 @@ Data (SQLite database, SSH keys) lives in `/opt/patchpilot/data/` — **back it 
 ## 🔒 Security notes
 
 - The fleet's private SSH key is stored on the PatchPilot server: protect this machine like a bastion (restricted access, kept up to date, firewalled)
-- SSH host key verification is disabled by default (internal fleet). To harden: provide a `known_hosts` file in `app/ssh_manager.py`
+- SSH host keys are verified using trust-on-first-use: the first successful **Test** records each machine's key in `data/keys/known_hosts`, and later connections reject a changed key (possible MITM). If you legitimately rebuild/rekey a machine, remove its line from `data/keys/known_hosts` and click **Test** again
+- The WebSocket enforces an `Origin` check against `PATCHPILOT_ORIGIN` (set automatically by `install.sh`)
 - Prefer HTTPS; with HTTP, restrict access to the internal network / VPN
 - Only 3 commands can be executed, hard-coded server-side — the interface cannot send any arbitrary command
 

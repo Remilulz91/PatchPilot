@@ -20,6 +20,9 @@ from .version import GITHUB_REPO, VERSION
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 COOKIE_SECURE = os.environ.get("PATCHPILOT_COOKIE_SECURE", "0") == "1"
+# Public origin of the site, used for WebSocket Origin checks (e.g.
+# "https://patchpilot.example.com"). Set by install.sh; empty disables the check.
+SITE_ORIGIN = os.environ.get("PATCHPILOT_ORIGIN", "").rstrip("/")
 
 app = FastAPI(title="PatchPilot", docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
@@ -28,6 +31,26 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), na
 @app.on_event("startup")
 def _startup():
     init_db()
+
+
+# =====================================================================
+# Security headers (defense-in-depth)
+# =====================================================================
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    resp = await call_next(request)
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.headers["Content-Security-Policy"] = (
+        "default-src 'self'; img-src 'self' data:; "
+        "style-src 'self'; script-src 'self'; "
+        "connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'none'"
+    )
+    if COOKIE_SECURE:
+        resp.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+    return resp
 
 
 # =====================================================================
@@ -47,11 +70,47 @@ def current_user(row=Depends(current_session)):
     return row
 
 
-def _set_session_cookie(response: Response, token: str):
+def csrf_protect(request: Request, pp_session: str | None = Cookie(default=None)):
+    """Double-submit CSRF check for unsafe methods: the X-CSRF-Token header
+    must match the per-session CSRF token. Defense-in-depth on top of
+    SameSite=Strict (also covers the same-site-subdomain bypass)."""
+    row = auth.get_session(pp_session)
+    if row is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if row["mfa_pending"]:
+        raise HTTPException(status_code=401, detail="MFA required")
+    header = request.headers.get(auth.CSRF_HEADER_NAME, "")
+    expected = row["csrf_token"]
+    if not expected or not secrets_compare(header, expected):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+    return row
+
+
+def secrets_compare(a: str, b: str) -> bool:
+    import hmac
+    return hmac.compare_digest(a or "", b or "")
+
+
+def client_ip(request: Request) -> str:
+    """Real client IP. uvicorn is started with --proxy-headers and
+    --forwarded-allow-ips=127.0.0.1, so request.client.host already reflects
+    nginx's X-Forwarded-For only when it comes from the trusted local proxy."""
+    return request.client.host if request.client else "?"
+
+
+def _set_session_cookie(response: Response, token: str, csrf: str, mfa_pending: bool):
+    max_age = auth.MFA_PENDING_LIFETIME if mfa_pending else auth.SESSION_LIFETIME
     response.set_cookie(
         auth.COOKIE_NAME, token,
         httponly=True, samesite="strict", secure=COOKIE_SECURE,
-        max_age=auth.SESSION_LIFETIME, path="/",
+        max_age=max_age, path="/",
+    )
+    # CSRF cookie is readable by JS (not HttpOnly) so the frontend can echo it
+    # back in the X-CSRF-Token header.
+    response.set_cookie(
+        auth.CSRF_COOKIE_NAME, csrf,
+        httponly=False, samesite="strict", secure=COOKIE_SECURE,
+        max_age=max_age, path="/",
     )
 
 
@@ -95,7 +154,7 @@ class LoginBody(BaseModel):
 
 @app.post("/api/login")
 def api_login(body: LoginBody, request: Request):
-    ip = request.client.host if request.client else "?"
+    ip = client_ip(request)
     if auth.is_locked(ip):
         raise HTTPException(status_code=429, detail="Too many attempts. Try again in 15 minutes.")
 
@@ -111,16 +170,16 @@ def api_login(body: LoginBody, request: Request):
             auth.record_failure(ip)
             raise HTTPException(status_code=401, detail="Invalid MFA code")
         auth.clear_failures(ip)
-        token = auth.create_session(user["id"], mfa_pending=False)
+        token, csrf = auth.create_session(user["id"], mfa_pending=False)
         resp = JSONResponse({"ok": True, "redirect": "/"})
-        _set_session_cookie(resp, token)
+        _set_session_cookie(resp, token, csrf, mfa_pending=False)
         return resp
 
-    # First login: MFA setup is mandatory
+    # First login: MFA setup is mandatory (short-lived pending session)
     auth.clear_failures(ip)
-    token = auth.create_session(user["id"], mfa_pending=True)
+    token, csrf = auth.create_session(user["id"], mfa_pending=True)
     resp = JSONResponse({"ok": True, "redirect": "/mfa"})
-    _set_session_cookie(resp, token)
+    _set_session_cookie(resp, token, csrf, mfa_pending=True)
     return resp
 
 
@@ -128,12 +187,15 @@ def api_login(body: LoginBody, request: Request):
 def api_mfa_qr(row=Depends(current_session)):
     if row["totp_enabled"]:
         raise HTTPException(status_code=400, detail="MFA already enabled")
-    uri = auth.totp_uri(row["username"], row["totp_secret"])
+    # Secret is generated lazily here, only at first setup — never stored
+    # eagerly at account creation.
+    secret = auth.get_or_create_totp_secret(row["id"], row["totp_secret"])
+    uri = auth.totp_uri(row["username"], secret)
     img = qrcode.make(uri)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     b64 = base64.b64encode(buf.getvalue()).decode()
-    return {"qr": f"data:image/png;base64,{b64}", "secret": row["totp_secret"]}
+    return {"qr": f"data:image/png;base64,{b64}", "secret": secret}
 
 
 class MfaBody(BaseModel):
@@ -141,15 +203,31 @@ class MfaBody(BaseModel):
 
 
 @app.post("/api/mfa/verify")
-def api_mfa_verify(body: MfaBody, row=Depends(current_session),
+def api_mfa_verify(body: MfaBody, request: Request,
                    pp_session: str | None = Cookie(default=None)):
-    if not auth.verify_totp(row["totp_secret"], body.code):
+    row = auth.get_session(pp_session)
+    if row is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    # For an already-enabled account, a CSRF token is required (this is a
+    # state-changing, session-rotating call). During first-time setup the
+    # session is fresh and has no prior CSRF context, so it is exempt.
+    if row["totp_enabled"]:
+        header = request.headers.get(auth.CSRF_HEADER_NAME, "")
+        if not secrets_compare(header, row["csrf_token"]):
+            raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
+    secret = row["totp_secret"]
+    if not secret or not auth.verify_totp(secret, body.code):
         raise HTTPException(status_code=401, detail="Invalid code")
     if not row["totp_enabled"]:
         with get_db() as db:
             db.execute("UPDATE users SET totp_enabled = 1 WHERE id = ?", (row["id"],))
-    auth.complete_mfa(pp_session)
-    return {"ok": True, "redirect": "/"}
+
+    # Rotate the token: kill the pending session, issue a fresh full one.
+    token, csrf = auth.complete_mfa(pp_session, row["id"])
+    resp = JSONResponse({"ok": True, "redirect": "/"})
+    _set_session_cookie(resp, token, csrf, mfa_pending=False)
+    return resp
 
 
 @app.post("/api/logout")
@@ -157,6 +235,7 @@ def api_logout(pp_session: str | None = Cookie(default=None)):
     auth.destroy_session(pp_session)
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(auth.COOKIE_NAME, path="/")
+    resp.delete_cookie(auth.CSRF_COOKIE_NAME, path="/")
     return resp
 
 
@@ -203,7 +282,7 @@ def api_machines(user=Depends(current_user)):
 
 
 @app.post("/api/machines")
-def api_add_machine(body: MachineBody, user=Depends(current_user)):
+def api_add_machine(body: MachineBody, user=Depends(csrf_protect)):
     with get_db() as db:
         try:
             cur = db.execute(
@@ -216,7 +295,7 @@ def api_add_machine(body: MachineBody, user=Depends(current_user)):
 
 
 @app.delete("/api/machines/{machine_id}")
-def api_delete_machine(machine_id: int, user=Depends(current_user)):
+def api_delete_machine(machine_id: int, user=Depends(csrf_protect)):
     with get_db() as db:
         db.execute("DELETE FROM machines WHERE id = ?", (machine_id,))
     return {"ok": True}
@@ -231,7 +310,7 @@ def _get_machine(machine_id: int):
 
 
 @app.post("/api/machines/{machine_id}/test")
-async def api_test_machine(machine_id: int, user=Depends(current_user)):
+async def api_test_machine(machine_id: int, user=Depends(csrf_protect)):
     machine = _get_machine(machine_id)
     result = await ssh_manager.test_machine(machine)
     if result.get("os_info"):
@@ -351,16 +430,30 @@ def _machine_busy(machine_id: int) -> bool:
                for j in jobs.values())
 
 
+_background_tasks: set = set()
+
+
+def _prune_jobs():
+    """Keep only the most recent finished jobs to bound memory."""
+    finished = [(jid, j) for jid, j in jobs.items() if j["status"] in ("success", "error")]
+    if len(finished) > 200:
+        finished.sort(key=lambda kv: kv[1]["started"])
+        for jid, _ in finished[:-200]:
+            jobs.pop(jid, None)
+
+
 def _start_job(machine, action: str) -> str:
     job_id = uuid.uuid4().hex[:12]
     jobs[job_id] = {"machine_id": machine["id"], "action": action,
                     "status": "pending", "started": time.time()}
-    asyncio.get_event_loop().create_task(_run_job(job_id, machine, action))
+    task = asyncio.create_task(_run_job(job_id, machine, action))
+    _background_tasks.add(task)
+    task.add_done_callback(lambda t: (_background_tasks.discard(t), _prune_jobs()))
     return job_id
 
 
 @app.post("/api/machines/{machine_id}/run")
-async def api_run(machine_id: int, body: RunBody, user=Depends(current_user)):
+async def api_run(machine_id: int, body: RunBody, user=Depends(csrf_protect)):
     machine = _get_machine(machine_id)
     if _machine_busy(machine_id):
         raise HTTPException(status_code=409, detail="An update is already running on this machine")
@@ -368,7 +461,7 @@ async def api_run(machine_id: int, body: RunBody, user=Depends(current_user)):
 
 
 @app.post("/api/run-all")
-async def api_run_all(body: RunBody, user=Depends(current_user)):
+async def api_run_all(body: RunBody, user=Depends(csrf_protect)):
     with get_db() as db:
         machines = db.execute("SELECT * FROM machines ORDER BY name").fetchall()
     started = []
@@ -380,6 +473,13 @@ async def api_run_all(body: RunBody, user=Depends(current_user)):
 
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
+    # Origin check (anti cross-site WebSocket hijacking). Only enforced when
+    # PATCHPILOT_ORIGIN is configured.
+    if SITE_ORIGIN:
+        origin = (websocket.headers.get("origin") or "").rstrip("/")
+        if origin != SITE_ORIGIN:
+            await websocket.close(code=4403)
+            return
     token = websocket.cookies.get(auth.COOKIE_NAME)
     row = auth.get_session(token)
     if row is None or row["mfa_pending"]:

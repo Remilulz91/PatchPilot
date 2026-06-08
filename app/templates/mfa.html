@@ -42,9 +42,10 @@
     document.getElementById('mfa-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       errEl.textContent = '';
+      const csrf = (document.cookie.match(/(?:^|;\s*)pp_csrf=([^;]+)/) || [])[1];
       const r = await fetch('/api/mfa/verify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf ? decodeURIComponent(csrf) : '' },
         body: JSON.stringify({ code: document.getElementById('code').value.trim() }),
       });
       const data = await r.json();

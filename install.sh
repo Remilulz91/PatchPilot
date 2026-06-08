@@ -153,7 +153,8 @@ Group=$SERVICE_USER
 WorkingDirectory=$INSTALL_DIR
 Environment=PATCHPILOT_DATA=$INSTALL_DIR/data
 Environment=PATCHPILOT_COOKIE_SECURE=$COOKIE_SECURE
-ExecStart=$INSTALL_DIR/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port $APP_PORT
+Environment=PATCHPILOT_ORIGIN=$SITE_URL
+ExecStart=$INSTALL_DIR/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port $APP_PORT --proxy-headers --forwarded-allow-ips 127.0.0.1
 Restart=on-failure
 NoNewPrivileges=true
 ProtectSystem=strict
@@ -178,6 +179,7 @@ server {
         proxy_pass http://127.0.0.1:$APP_PORT;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$remote_addr;
         proxy_set_header X-Forwarded-Proto \$scheme;
         # WebSocket (real-time logs)
         proxy_http_version 1.1;

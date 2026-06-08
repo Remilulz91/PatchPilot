@@ -35,11 +35,21 @@ CREATE TABLE IF NOT EXISTS machines (
 
 CREATE TABLE IF NOT EXISTS sessions (
     token_hash  TEXT PRIMARY KEY,
+    csrf_token  TEXT NOT NULL DEFAULT '',
     user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     mfa_pending INTEGER NOT NULL DEFAULT 0,
     expires_at  REAL NOT NULL
 );
 """
+
+
+def _migrate(db):
+    """Apply small schema migrations for databases created by older versions."""
+    cols = {r["name"] for r in db.execute("PRAGMA table_info(sessions)").fetchall()}
+    if "csrf_token" not in cols:
+        # Old sessions lack a CSRF token; drop them so everyone re-logs in cleanly.
+        db.execute("DROP TABLE sessions")
+        db.executescript(SCHEMA)
 
 
 @contextmanager
@@ -59,3 +69,4 @@ def init_db():
     os.makedirs(KEYS_DIR, exist_ok=True)
     with get_db() as db:
         db.executescript(SCHEMA)
+        _migrate(db)

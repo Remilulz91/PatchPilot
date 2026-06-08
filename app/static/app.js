@@ -9,10 +9,17 @@ const runningMachines = new Set();
 
 // ---------- Helpers ----------
 
+function getCookie(name) {
+  const m = document.cookie.match(new RegExp("(?:^|;\\s*)" + name + "=([^;]+)"));
+  return m ? decodeURIComponent(m[1]) : "";
+}
+
 async function api(method, url, body) {
+  const headers = body ? { "Content-Type": "application/json" } : {};
+  if (method !== "GET") headers["X-CSRF-Token"] = getCookie("pp_csrf");
   const r = await fetch(url, {
     method,
-    headers: body ? { "Content-Type": "application/json" } : {},
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
   if (r.status === 401) { window.location.href = "/login"; throw new Error("401"); }

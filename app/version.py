@@ -2,5 +2,5 @@
 
 VERSION must match the git tag of each release (without the leading 'v').
 """
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 GITHUB_REPO = "Remilulz91/patchpilot"
