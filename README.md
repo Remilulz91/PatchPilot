@@ -45,7 +45,9 @@ The script asks for:
    - HTTP → enter the **IP address** of the host machine to use (detected IPs are listed)
 2. The site **administrator account** (username + password)
 
-A full **summary** is then displayed; type `yes` to confirm and everything installs automatically: packages, Python environment, dedicated SSH key, systemd service, nginx (and certificate for HTTPS). When it's done, just open the website.
+The script also offers an optional **UFW firewall + fail2ban** hardening step (recommended for production): UFW allows only SSH and the web ports, and fail2ban bans IPs that brute-force SSH or the PatchPilot login page (5 failures / 10 min → 30 min ban).
+
+A full **summary** is then displayed; type `yes` to confirm and everything installs automatically: packages, Python environment, dedicated SSH key, systemd service, nginx (and certificate for HTTPS, plus UFW/fail2ban if chosen). When it's done, just open the website.
 
 ### First login
 

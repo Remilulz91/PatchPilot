@@ -76,6 +76,12 @@ while true; do
     echo "Passwords do not match."
 done
 
+# Optional hardening: UFW firewall + fail2ban
+echo ""
+read -rp "Also configure a UFW firewall + fail2ban (recommended for production)? [yes/no]: " HARDEN
+HARDEN=$(echo "$HARDEN" | tr '[:upper:]' '[:lower:]')
+[[ "$HARDEN" == "yes" || "$HARDEN" == "y" ]] && HARDEN="yes" || HARDEN="no"
+
 #--- 2. Summary + confirmation ------------------------------------------------
 echo ""
 echo -e "${C_YELLOW}=============== INSTALLATION SUMMARY ===============${C_RESET}"
@@ -90,13 +96,18 @@ echo "  Site URL             : $SITE_URL"
 echo "  Install directory    : $INSTALL_DIR"
 echo "  System user          : $SERVICE_USER (no shell)"
 echo "  Site admin           : $ADMIN_USER (MFA set up on first login)"
+echo "  UFW + fail2ban       : $HARDEN"
 echo ""
 echo "  Will be installed/configured automatically:"
-echo "   - Packages: python3, python3-venv, nginx$([[ "$MODE" == "https" ]] && echo ', certbot')"
+echo "   - Packages: python3, python3-venv, nginx$([[ "$MODE" == "https" ]] && echo ', certbot')$([[ "$HARDEN" == "yes" ]] && echo ', ufw, fail2ban')"
 echo "   - Application in $INSTALL_DIR (Python virtual environment)"
 echo "   - Dedicated ed25519 SSH key (to authorize on your machines)"
 echo "   - systemd service 'patchpilot' (starts on boot)"
 echo "   - Nginx reverse proxy$([[ "$MODE" == "https" ]] && echo ' + Let'"'"'s Encrypt certificate')"
+if [[ "$HARDEN" == "yes" ]]; then
+echo "   - UFW firewall (allow SSH + 80$([[ "$MODE" == "https" ]] && echo '/443'), deny the rest)"
+echo "   - fail2ban (protect SSH + the PatchPilot login page)"
+fi
 echo -e "${C_YELLOW}====================================================${C_RESET}"
 echo ""
 read -rp "Confirm installation? [yes/no]: " CONFIRM
@@ -200,7 +211,56 @@ if [[ "$MODE" == "https" ]]; then
     ok "HTTPS enabled with automatic redirect"
 fi
 
+#--- 3b. Optional hardening: UFW + fail2ban -----------------------------------
+if [[ "$HARDEN" == "yes" ]]; then
+    info "Installing UFW and fail2ban..."
+    apt-get install -y -qq ufw fail2ban >/dev/null
+
+    # --- UFW firewall ---
+    info "Configuring the UFW firewall..."
+    # Detect the active SSH port to avoid locking yourself out.
+    SSH_PORT=$(grep -E '^\s*Port\s+[0-9]+' /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' | head -1)
+    SSH_PORT=${SSH_PORT:-22}
+    ufw allow "$SSH_PORT"/tcp comment 'SSH' >/dev/null
+    ufw allow 80/tcp comment 'PatchPilot HTTP' >/dev/null
+    [[ "$MODE" == "https" ]] && ufw allow 443/tcp comment 'PatchPilot HTTPS' >/dev/null
+    ufw --force enable >/dev/null
+    ok "UFW enabled (SSH port $SSH_PORT, 80$([[ "$MODE" == "https" ]] && echo ' and 443') open; everything else denied)"
+
+    # --- fail2ban ---
+    info "Configuring fail2ban..."
+    # Custom filter: a failed PatchPilot login is a POST /api/login that nginx
+    # answers with 401 (bad credentials / bad MFA), 403 (CSRF) or 429 (throttled).
+    cat > /etc/fail2ban/filter.d/patchpilot.conf <<'FILTER'
+[Definition]
+failregex = ^<HOST> .*"POST /api/login HTTP/[^"]*" (401|403|429)\b
+ignoreregex =
+FILTER
+
+    cat > /etc/fail2ban/jail.d/patchpilot.local <<EOF
+# Protect the host's SSH service
+[sshd]
+enabled  = true
+maxretry = 5
+bantime  = 1800
+
+# Protect the PatchPilot web login (reads nginx access log)
+[patchpilot]
+enabled  = true
+port     = http,https
+filter   = patchpilot
+logpath  = /var/log/nginx/access.log
+maxretry = 5
+findtime = 600
+bantime  = 1800
+EOF
+    systemctl enable fail2ban >/dev/null 2>&1
+    systemctl restart fail2ban
+    ok "fail2ban enabled (sshd + PatchPilot login: 5 fails / 10 min => 30 min ban)"
+fi
+
 #--- 4. Done -------------------------------------------------------------------
+# (installation finished)
 PUBKEY=$(cat "$INSTALL_DIR/data/keys/id_ed25519.pub")
 echo ""
 echo -e "${C_GREEN}=============================================${C_RESET}"
@@ -209,6 +269,7 @@ echo -e "${C_GREEN}=============================================${C_RESET}"
 echo ""
 echo "  Website     : $SITE_URL"
 echo "  Login       : $ADMIN_USER (MFA will be set up on first login)"
+[[ "$HARDEN" == "yes" ]] && echo "  Hardening   : UFW firewall + fail2ban active"
 echo ""
 echo "  PatchPilot SSH public key (also visible in the web interface):"
 echo ""
