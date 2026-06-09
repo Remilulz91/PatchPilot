@@ -165,6 +165,7 @@ WorkingDirectory=$INSTALL_DIR
 Environment=PATCHPILOT_DATA=$INSTALL_DIR/data
 Environment=PATCHPILOT_COOKIE_SECURE=$COOKIE_SECURE
 Environment=PATCHPILOT_ORIGIN=$SITE_URL
+Environment=HOME=$INSTALL_DIR/data
 ExecStart=$INSTALL_DIR/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port $APP_PORT --proxy-headers --forwarded-allow-ips 127.0.0.1
 Restart=on-failure
 NoNewPrivileges=true

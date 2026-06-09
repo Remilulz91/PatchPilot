@@ -9,6 +9,13 @@ DB_PATH = os.path.join(DATA_DIR, "patchpilot.db")
 KEYS_DIR = os.path.join(DATA_DIR, "keys")
 SSH_KEY_PATH = os.path.join(KEYS_DIR, "id_ed25519")
 
+# Point HOME at our data directory. The systemd unit runs with
+# ProtectHome=true, which makes the service user's real home (under /home or
+# /root) inaccessible. asyncssh expands "~/.ssh" for default lookups, so
+# without this it tries to read /home/<user>/.ssh and fails with
+# "Permission denied". Our data dir lives under /opt and is always accessible.
+os.environ["HOME"] = DATA_DIR
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
