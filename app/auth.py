@@ -133,17 +133,137 @@ def verify_totp(secret: str, code: str) -> bool:
     return pyotp.TOTP(secret).verify(code, valid_window=1)
 
 
+# ---------- Recovery codes (MFA backup) ----------
+
+RECOVERY_CODE_COUNT = 10
+_RC_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"  # no ambiguous chars (0/o/1/l/i)
+
+
+def _normalize_recovery(code: str) -> str:
+    return (code or "").strip().lower().replace("-", "").replace(" ", "")
+
+
+def generate_recovery_codes(user_id: int) -> list[str]:
+    """Generate a fresh set of recovery codes, replacing any previous ones.
+    Returns the plaintext codes (shown once); only hashes are stored."""
+    codes = []
+    for _ in range(RECOVERY_CODE_COUNT):
+        raw = "".join(secrets.choice(_RC_ALPHABET) for _ in range(8))
+        codes.append(raw[:4] + "-" + raw[4:])  # display format xxxx-xxxx
+    with get_db() as db:
+        db.execute("DELETE FROM recovery_codes WHERE user_id = ?", (user_id,))
+        for raw in codes:
+            db.execute(
+                "INSERT INTO recovery_codes (user_id, code_hash) VALUES (?, ?)",
+                (user_id, _hash_token(_normalize_recovery(raw))),
+            )
+    return codes
+
+
+def verify_and_consume_recovery(user_id: int, code: str) -> bool:
+    """If `code` matches an unused recovery code, consume it and return True."""
+    h = _hash_token(_normalize_recovery(code))
+    if not _normalize_recovery(code):
+        return False
+    with get_db() as db:
+        row = db.execute(
+            "SELECT id FROM recovery_codes WHERE user_id = ? AND code_hash = ? AND used = 0",
+            (user_id, h),
+        ).fetchone()
+        if row is None:
+            return False
+        db.execute("UPDATE recovery_codes SET used = 1 WHERE id = ?", (row["id"],))
+    return True
+
+
+def count_recovery_codes(user_id: int) -> int:
+    with get_db() as db:
+        return db.execute(
+            "SELECT COUNT(*) AS n FROM recovery_codes WHERE user_id = ? AND used = 0",
+            (user_id,),
+        ).fetchone()["n"]
+
+
 # ---------- Users ----------
 
-def create_user(username: str, password: str):
+def create_user(username: str, password: str, is_admin: bool = False):
     # totp_secret stays empty until the user sets up MFA on first login.
     with get_db() as db:
         db.execute(
-            "INSERT INTO users (username, password_hash, totp_secret) VALUES (?, ?, '')",
-            (username, hash_password(password)),
+            "INSERT INTO users (username, password_hash, is_admin, pending) VALUES (?, ?, ?, 0)",
+            (username, hash_password(password), int(is_admin)),
         )
 
 
 def get_user_by_name(username: str):
     with get_db() as db:
         return db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+
+
+def get_user_by_id(user_id: int):
+    with get_db() as db:
+        return db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+
+
+def list_users():
+    with get_db() as db:
+        return db.execute(
+            "SELECT id, username, is_admin, pending, totp_enabled, created_at "
+            "FROM users ORDER BY username"
+        ).fetchall()
+
+
+# ---------- User invitations / activation ----------
+
+ACTIVATION_LIFETIME = 7 * 24 * 3600  # 7 days
+
+
+def create_pending_user(username: str, is_admin: bool = False) -> str:
+    """Create an account with no password yet. Returns the plaintext activation
+    token (to embed in the link sent manually to the user)."""
+    token = secrets.token_urlsafe(32)
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO users (username, password_hash, is_admin, pending, activation_hash, activation_expires) "
+            "VALUES (?, '', ?, 1, ?, ?)",
+            (username, int(is_admin), _hash_token(token), time.time() + ACTIVATION_LIFETIME),
+        )
+    return token
+
+
+def regenerate_activation(user_id: int) -> str:
+    token = secrets.token_urlsafe(32)
+    with get_db() as db:
+        db.execute(
+            "UPDATE users SET activation_hash = ?, activation_expires = ?, pending = 1 WHERE id = ?",
+            (_hash_token(token), time.time() + ACTIVATION_LIFETIME, user_id),
+        )
+    return token
+
+
+def get_pending_by_token(token: str):
+    if not token:
+        return None
+    with get_db() as db:
+        return db.execute(
+            "SELECT * FROM users WHERE activation_hash = ? AND pending = 1 AND activation_expires > ?",
+            (_hash_token(token), time.time()),
+        ).fetchone()
+
+
+def activate_user(token: str, password: str) -> bool:
+    user = get_pending_by_token(token)
+    if user is None:
+        return False
+    with get_db() as db:
+        db.execute(
+            "UPDATE users SET password_hash = ?, pending = 0, activation_hash = '', activation_expires = NULL "
+            "WHERE id = ?",
+            (hash_password(password), user["id"]),
+        )
+    return True
+
+
+def delete_user(user_id: int):
+    with get_db() as db:
+        db.execute("DELETE FROM users WHERE id = ?", (user_id,))

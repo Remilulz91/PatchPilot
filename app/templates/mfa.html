@@ -34,6 +34,16 @@
       <button type="submit" class="full" data-i18n="enable_mfa"></button>
       <p class="error-msg" id="error"></p>
     </form>
+
+    <!-- Recovery codes panel, shown once after MFA is enabled -->
+    <div class="auth-card recovery-panel" id="recovery-panel" style="display:none">
+      <h1 data-i18n="rc_title"></h1>
+      <p class="sub" data-i18n="rc_intro"></p>
+      <div class="recovery-grid" id="recovery-grid"></div>
+      <p class="recovery-warn" data-i18n="rc_warn"></p>
+      <button class="secondary small" id="btn-copy-rc" data-i18n="copy"></button>
+      <button class="full" id="btn-rc-continue" data-i18n="rc_continue"></button>
+    </div>
   </div>
 
   <script src="/static/mfa.js"></script>

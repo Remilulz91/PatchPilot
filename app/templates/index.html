@@ -15,7 +15,9 @@
       <span class="badge idle" id="version-badge" style="display:none"></span>
     </div>
     <div class="actions">
+      <span id="current-user" class="current-user"></span>
       <button class="secondary small" id="lang-toggle">FR</button>
+      <button class="secondary small" id="btn-users" data-i18n="users" style="display:none"></button>
       <button class="secondary small" id="btn-pubkey" data-i18n="ssh_pubkey"></button>
       <button class="secondary small" id="btn-logout" data-i18n="logout"></button>
     </div>
@@ -79,6 +81,43 @@
       <pre id="pubkey">…</pre>
       <div class="btns">
         <button class="secondary" id="btn-copy-key" data-i18n="copy"></button>
+        <button data-close data-i18n="close"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Users management modal (admin only) -->
+  <div class="modal-bg" id="modal-users">
+    <div class="modal" style="max-width:620px">
+      <h2 data-i18n="users_title"></h2>
+
+      <table class="users-table">
+        <thead>
+          <tr>
+            <th data-i18n="u_th_user"></th>
+            <th data-i18n="u_th_role"></th>
+            <th data-i18n="u_th_status"></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="users-body"></tbody>
+      </table>
+
+      <h3 class="u-subtitle" data-i18n="u_add_title"></h3>
+      <form id="form-user" class="u-add-form">
+        <input id="u-name" required maxlength="64" placeholder="jdupont" data-i18n-ph="u_name_ph">
+        <label class="u-admin-check"><input type="checkbox" id="u-admin"> <span data-i18n="u_make_admin"></span></label>
+        <button type="submit" data-i18n="u_create"></button>
+      </form>
+      <p class="error-msg" id="user-error"></p>
+
+      <div id="invite-box" class="invite-box" style="display:none">
+        <p class="sub" data-i18n="u_invite_hint"></p>
+        <pre id="invite-link"></pre>
+        <button class="secondary small" id="btn-copy-invite" data-i18n="copy"></button>
+      </div>
+
+      <div class="btns">
         <button data-close data-i18n="close"></button>
       </div>
     </div>

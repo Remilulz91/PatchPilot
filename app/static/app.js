@@ -178,6 +178,91 @@ document.getElementById("btn-copy-key").onclick = () => {
   navigator.clipboard.writeText(document.getElementById("pubkey").textContent);
 };
 
+// ---------- Current user / admin ----------
+
+let me = null;
+
+async function loadMe() {
+  try {
+    me = await api("GET", "/api/me");
+    const el = document.getElementById("current-user");
+    const role = me.is_admin ? " (admin)" : "";
+    el.innerHTML = `<b>${esc(me.username)}</b>${esc(role)}`;
+    if (me.is_admin) document.getElementById("btn-users").style.display = "";
+  } catch { /* ignore */ }
+}
+
+// ---------- Users management (admin) ----------
+
+document.getElementById("btn-users").onclick = async () => {
+  await loadUsers();
+  document.getElementById("invite-box").style.display = "none";
+  document.getElementById("user-error").textContent = "";
+  openModal("modal-users");
+};
+
+async function loadUsers() {
+  const users = await api("GET", "/api/users");
+  const tb = document.getElementById("users-body");
+  tb.innerHTML = "";
+  for (const u of users) {
+    const role = u.is_admin ? t("u_role_admin") : t("u_role_user");
+    const status = u.pending ? `<span class="badge running">${t("u_pending")}</span>`
+                             : `<span class="badge success">${t("u_active")}</span>`;
+    const isSelf = me && u.username === me.username;
+    const reinvite = u.pending ? `<button class="small secondary" data-reinvite="${u.id}">${t("u_relink")}</button>` : "";
+    const del = isSelf ? "" : `<button class="small danger" data-deluser="${u.id}">✕</button>`;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td><b>${esc(u.username)}</b></td><td>${esc(role)}</td><td>${status}</td>
+                    <td><div class="row-actions">${reinvite}${del}</div></td>`;
+    tb.appendChild(tr);
+  }
+}
+
+function showInvite(link) {
+  document.getElementById("invite-link").textContent = link;
+  document.getElementById("invite-box").style.display = "block";
+}
+
+document.getElementById("users-body").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  const errEl = document.getElementById("user-error");
+  errEl.textContent = "";
+  try {
+    if (btn.dataset.deluser) {
+      const id = Number(btn.dataset.deluser);
+      if (confirm(t("u_confirm_delete"))) {
+        await api("DELETE", `/api/users/${id}`);
+        await loadUsers();
+      }
+    } else if (btn.dataset.reinvite) {
+      const res = await api("POST", `/api/users/${btn.dataset.reinvite}/reinvite`);
+      showInvite(res.activation_link);
+    }
+  } catch (err) { errEl.textContent = err.message; }
+});
+
+document.getElementById("form-user").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("user-error");
+  errEl.textContent = "";
+  try {
+    const res = await api("POST", "/api/users", {
+      username: document.getElementById("u-name").value.trim(),
+      is_admin: document.getElementById("u-admin").checked,
+    });
+    document.getElementById("u-name").value = "";
+    document.getElementById("u-admin").checked = false;
+    await loadUsers();
+    showInvite(res.activation_link);
+  } catch (err) { errEl.textContent = err.message; }
+});
+
+document.getElementById("btn-copy-invite").onclick = () => {
+  navigator.clipboard.writeText(document.getElementById("invite-link").textContent);
+};
+
 // ---------- Modals ----------
 
 function openModal(id) { document.getElementById(id).classList.add("open"); }
@@ -241,5 +326,6 @@ function connectWS() {
 
 // ---------- Init ----------
 
+loadMe();
 loadMachines().then(connectWS).catch(() => {});
 loadVersion();

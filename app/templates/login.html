@@ -24,8 +24,9 @@
       <input id="password" type="password" autocomplete="current-password" required>
 
       <div id="totp-block" style="display:none">
-        <label for="totp" data-i18n="mfa_code"></label>
+        <label for="totp" id="totp-label" data-i18n="mfa_code"></label>
         <input id="totp" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+        <a href="#" id="use-recovery" class="link-sm" data-i18n="use_recovery"></a>
       </div>
 
       <button type="submit" class="full" data-i18n="sign_in"></button>

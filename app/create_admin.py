@@ -24,7 +24,7 @@ def main():
     if auth.get_user_by_name(username):
         print(f"User '{username}' already exists, nothing to do.")
         return
-    auth.create_user(username, password)
+    auth.create_user(username, password, is_admin=True)
     print(f"Administrator '{username}' created. MFA will be set up on first login.")
 
 

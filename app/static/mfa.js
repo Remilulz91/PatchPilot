@@ -22,5 +22,29 @@ document.getElementById('mfa-form').addEventListener('submit', async (e) => {
   });
   const data = await r.json();
   if (!r.ok) { errEl.textContent = tServer(data.detail) || t('invalid_code'); return; }
-  window.location.href = data.redirect || '/';
+
+  const redirect = data.redirect || '/';
+  if (data.recovery_codes && data.recovery_codes.length) {
+    showRecoveryCodes(data.recovery_codes, redirect);
+  } else {
+    window.location.href = redirect;
+  }
 });
+
+function showRecoveryCodes(codes, redirect) {
+  document.getElementById('mfa-form').style.display = 'none';
+  const grid = document.getElementById('recovery-grid');
+  grid.innerHTML = '';
+  for (const c of codes) {
+    const span = document.createElement('span');
+    span.textContent = c;
+    grid.appendChild(span);
+  }
+  document.getElementById('recovery-panel').style.display = 'block';
+  document.getElementById('btn-copy-rc').addEventListener('click', () => {
+    navigator.clipboard.writeText(codes.join('\n'));
+  });
+  document.getElementById('btn-rc-continue').addEventListener('click', () => {
+    window.location.href = redirect;
+  });
+}

@@ -4,6 +4,30 @@
 const form = document.getElementById('login-form');
 const totpBlock = document.getElementById('totp-block');
 const errEl = document.getElementById('error');
+const totpInput = document.getElementById('totp');
+
+// Toggle between 6-digit TOTP and a longer recovery code.
+let recoveryMode = false;
+document.getElementById('use-recovery').addEventListener('click', (e) => {
+  e.preventDefault();
+  recoveryMode = !recoveryMode;
+  if (recoveryMode) {
+    totpInput.removeAttribute('maxlength');
+    totpInput.setAttribute('inputmode', 'text');
+    totpInput.value = '';
+    totpInput.placeholder = 'xxxx-xxxx';
+    document.getElementById('totp-label').textContent = t('recovery_code');
+    document.getElementById('use-recovery').textContent = t('use_totp');
+  } else {
+    totpInput.setAttribute('maxlength', '6');
+    totpInput.setAttribute('inputmode', 'numeric');
+    totpInput.value = '';
+    totpInput.placeholder = '';
+    document.getElementById('totp-label').textContent = t('mfa_code');
+    document.getElementById('use-recovery').textContent = t('use_recovery');
+  }
+  totpInput.focus();
+});
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();

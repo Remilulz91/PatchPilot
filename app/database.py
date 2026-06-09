@@ -11,12 +11,23 @@ SSH_KEY_PATH = os.path.join(KEYS_DIR, "id_ed25519")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    username      TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    totp_secret   TEXT NOT NULL,
-    totp_enabled  INTEGER NOT NULL DEFAULT 0,
-    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    username          TEXT NOT NULL UNIQUE,
+    password_hash     TEXT NOT NULL DEFAULT '',
+    totp_secret       TEXT NOT NULL DEFAULT '',
+    totp_enabled      INTEGER NOT NULL DEFAULT 0,
+    is_admin          INTEGER NOT NULL DEFAULT 0,
+    pending           INTEGER NOT NULL DEFAULT 0,
+    activation_hash   TEXT NOT NULL DEFAULT '',
+    activation_expires REAL,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS recovery_codes (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash TEXT NOT NULL,
+    used      INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS machines (
@@ -45,11 +56,29 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 def _migrate(db):
     """Apply small schema migrations for databases created by older versions."""
-    cols = {r["name"] for r in db.execute("PRAGMA table_info(sessions)").fetchall()}
-    if "csrf_token" not in cols:
+    sess_cols = {r["name"] for r in db.execute("PRAGMA table_info(sessions)").fetchall()}
+    if "csrf_token" not in sess_cols:
         # Old sessions lack a CSRF token; drop them so everyone re-logs in cleanly.
         db.execute("DROP TABLE sessions")
         db.executescript(SCHEMA)
+
+    # users: add multi-user / activation columns on older databases
+    user_cols = {r["name"] for r in db.execute("PRAGMA table_info(users)").fetchall()}
+    added = []
+    for col, ddl in (
+        ("is_admin", "is_admin INTEGER NOT NULL DEFAULT 0"),
+        ("pending", "pending INTEGER NOT NULL DEFAULT 0"),
+        ("activation_hash", "activation_hash TEXT NOT NULL DEFAULT ''"),
+        ("activation_expires", "activation_expires REAL"),
+    ):
+        if col not in user_cols:
+            db.execute(f"ALTER TABLE users ADD COLUMN {ddl}")
+            added.append(col)
+    if "is_admin" in added:
+        # Promote the original installer-created account (lowest id) to admin.
+        row = db.execute("SELECT MIN(id) AS mid FROM users").fetchone()
+        if row and row["mid"] is not None:
+            db.execute("UPDATE users SET is_admin = 1 WHERE id = ?", (row["mid"],))
 
 
 @contextmanager

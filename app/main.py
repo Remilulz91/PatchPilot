@@ -172,10 +172,15 @@ def api_login(body: LoginBody, request: Request):
         auth.record_failure(ip)
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    if user["pending"]:
+        raise HTTPException(status_code=403, detail="Account not activated yet")
+
     if user["totp_enabled"]:
         if not body.totp_code:
             return {"mfa_code_required": True}
-        if not auth.verify_totp(user["totp_secret"], body.totp_code):
+        ok = auth.verify_totp(user["totp_secret"], body.totp_code) or \
+            auth.verify_and_consume_recovery(user["id"], body.totp_code)
+        if not ok:
             auth.record_failure(ip)
             raise HTTPException(status_code=401, detail="Invalid MFA code")
         auth.clear_failures(ip)
@@ -228,13 +233,18 @@ def api_mfa_verify(body: MfaBody, request: Request,
     secret = row["totp_secret"]
     if not secret or not auth.verify_totp(secret, body.code):
         raise HTTPException(status_code=401, detail="Invalid code")
-    if not row["totp_enabled"]:
+
+    recovery_codes = None
+    first_setup = not row["totp_enabled"]
+    if first_setup:
         with get_db() as db:
             db.execute("UPDATE users SET totp_enabled = 1 WHERE id = ?", (row["id"],))
+        # Generate one-time recovery codes, shown once now.
+        recovery_codes = auth.generate_recovery_codes(row["id"])
 
     # Rotate the token: kill the pending session, issue a fresh full one.
     token, csrf = auth.complete_mfa(pp_session, row["id"])
-    resp = JSONResponse({"ok": True, "redirect": "/"})
+    resp = JSONResponse({"ok": True, "redirect": "/", "recovery_codes": recovery_codes})
     _set_session_cookie(resp, token, csrf, mfa_pending=False)
     return resp
 
@@ -331,6 +341,121 @@ async def api_test_machine(machine_id: int, user=Depends(csrf_protect)):
 @app.get("/api/public-key")
 def api_public_key(user=Depends(current_user)):
     return {"public_key": ssh_manager.get_public_key()}
+
+
+@app.get("/api/me")
+def api_me(user=Depends(current_user)):
+    return {"username": user["username"], "is_admin": bool(user["is_admin"])}
+
+
+# =====================================================================
+# API: user management (admin only)
+# =====================================================================
+
+def current_admin(request: Request, user=Depends(csrf_protect)):
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403, detail="Administrator privileges required")
+    return user
+
+
+def current_admin_get(user=Depends(current_user)):
+    """Admin check for safe (GET) requests, without CSRF."""
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403, detail="Administrator privileges required")
+    return user
+
+
+USERNAME_ACCOUNT_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
+class NewUserBody(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    is_admin: bool = False
+
+    @field_validator("username")
+    @classmethod
+    def check_username(cls, v: str) -> str:
+        v = v.strip()
+        if not USERNAME_ACCOUNT_RE.match(v):
+            raise ValueError("Username may only contain letters, digits, dot, dash and underscore")
+        return v
+
+
+def _activation_link(request: Request, token: str) -> str:
+    base = SITE_ORIGIN or str(request.base_url).rstrip("/")
+    return f"{base}/activate?token={token}"
+
+
+@app.get("/api/users")
+def api_list_users(admin=Depends(current_admin_get)):
+    rows = auth.list_users()
+    return [dict(r) for r in rows]
+
+
+@app.post("/api/users")
+def api_create_user(body: NewUserBody, request: Request, admin=Depends(current_admin)):
+    if auth.get_user_by_name(body.username):
+        raise HTTPException(status_code=409, detail="This username already exists")
+    token = auth.create_pending_user(body.username, is_admin=body.is_admin)
+    return {"ok": True, "activation_link": _activation_link(request, token)}
+
+
+@app.post("/api/users/{user_id}/reinvite")
+def api_reinvite(user_id: int, request: Request, admin=Depends(current_admin)):
+    target = auth.get_user_by_id(user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not target["pending"]:
+        raise HTTPException(status_code=400, detail="This account is already active")
+    token = auth.regenerate_activation(user_id)
+    return {"ok": True, "activation_link": _activation_link(request, token)}
+
+
+@app.delete("/api/users/{user_id}")
+def api_delete_user(user_id: int, admin=Depends(current_admin)):
+    if user_id == admin["id"]:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account")
+    target = auth.get_user_by_id(user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    # Don't allow removing the last remaining admin.
+    if target["is_admin"]:
+        admins = [u for u in auth.list_users() if u["is_admin"]]
+        if len(admins) <= 1:
+            raise HTTPException(status_code=400, detail="Cannot delete the last administrator")
+    auth.delete_user(user_id)
+    return {"ok": True}
+
+
+# =====================================================================
+# Account activation (public, secured by the invitation token)
+# =====================================================================
+
+@app.get("/activate", response_class=HTMLResponse)
+def activate_page():
+    return _page("activate.html")
+
+
+@app.get("/api/activation/info")
+def api_activation_info(token: str = ""):
+    user = auth.get_pending_by_token(token)
+    if user is None:
+        raise HTTPException(status_code=404, detail="Invalid or expired activation link")
+    return {"username": user["username"]}
+
+
+class ActivationBody(BaseModel):
+    token: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=10, max_length=256)
+
+
+@app.post("/api/activation/complete")
+def api_activation_complete(body: ActivationBody):
+    # Public endpoint, protected by the unguessable single-use token.
+    if auth.get_pending_by_token(body.token) is None:
+        raise HTTPException(status_code=404, detail="Invalid or expired activation link")
+    auth.activate_user(body.token, body.password)
+    return {"ok": True, "redirect": "/login"}
 
 
 # =====================================================================

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PatchPilot — Account activation</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/i18n.js"></script>
+</head>
+<body>
+  <div class="auth-wrap">
+    <form class="auth-card" id="activate-form">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <img class="auth-logo" src="/static/favicon.svg" alt="" style="margin:0">
+        <button type="button" class="secondary small" id="lang-toggle">FR</button>
+      </div>
+      <h1 data-i18n="act_title"></h1>
+      <p class="sub" id="act-intro"></p>
+
+      <div id="act-fields">
+        <label for="password" data-i18n="act_password"></label>
+        <input id="password" type="password" autocomplete="new-password" minlength="10" required>
+
+        <label for="password2" data-i18n="act_password2"></label>
+        <input id="password2" type="password" autocomplete="new-password" minlength="10" required>
+
+        <button type="submit" class="full" data-i18n="act_submit"></button>
+      </div>
+
+      <p class="error-msg" id="error"></p>
+      <p class="sub" id="act-done" style="display:none"></p>
+    </form>
+  </div>
+
+  <script src="/static/activate.js"></script>
+</body>
+</html>
