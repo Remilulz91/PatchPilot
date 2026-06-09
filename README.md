@@ -2,7 +2,7 @@
 
 **Centralized update management for your Linux fleet, from a simple web interface.**
 
-PatchPilot connects to your **Debian / Ubuntu** machines over SSH (key-based) and runs — and only runs — apt maintenance commands:
+PatchPilot connects to your **Debian / Ubuntu** machines — and the **Proxmox** suite (VE, Backup Server, Mail Gateway, Datacenter Manager) — over SSH (key-based) and runs — and only runs — apt maintenance commands:
 
 - `apt update`
 - `apt upgrade`
@@ -21,6 +21,7 @@ Update one machine with a single click, or the whole fleet at once, with real-ti
 - **One-click updates**: full maintenance sequence (update → upgrade → autoremove) per machine, or "Update all" (parallel execution)
 - **Pending-updates indicator**: a "Check" action refreshes package lists and shows how many updates are waiting per machine
 - **Scheduled updates**: admins can run the full sequence automatically on all machines, daily or weekly at a chosen time (in-app, no cron needed)
+- **Proxmox-aware**: auto-detects Proxmox VE / Backup Server / Mail Gateway / Datacenter Manager and automatically uses `dist-upgrade` (full-upgrade) as Proxmox requires; flags machines needing a reboot (PatchPilot **never** reboots on its own — it would shut down running VMs/services); warns before mass-updating a Proxmox cluster; and detects the enterprise-repo subscription error (401)
 - **Real-time logs**: apt output streams live to the browser via WebSocket
 - **Key-based SSH only**: dedicated ed25519 key, as root or a sudo-enabled user
 - **Language switch**: English / French interface (EN/FR button)

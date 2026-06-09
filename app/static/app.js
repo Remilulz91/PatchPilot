@@ -84,9 +84,11 @@ function render() {
     const lastTxt = m.last_action
       ? esc(kindLabel(m.last_action)) + "<div class='host'>" + esc(m.last_run || "") + "</div>"
       : "—";
+    const rebootTag = m.reboot_required
+      ? ` <span class="badge error" title="${esc(t("reboot_hint"))}">${t("reboot_badge")}</span>` : "";
     tr.innerHTML = `
       <td><b>${esc(m.name)}</b><div class="host">${esc(m.username)}@${esc(m.host)}:${m.port}</div></td>
-      <td>${esc(m.os_info || "—")}</td>
+      <td>${esc(m.os_info || "—")}${rebootTag}</td>
       <td>${pendingBadge(m)}</td>
       <td>${badge(m)}</td>
       <td>${lastTxt}</td>
@@ -164,9 +166,17 @@ tbody.addEventListener("click", async (e) => {
 
 // ---------- Global buttons ----------
 
+function hasProxmoxCluster() {
+  // Warn when several PVE nodes are present (Proxmox advises rolling cluster updates).
+  return machines.filter(m => m.os_type === "pve").length >= 2;
+}
+function clusterPrefix() {
+  return hasProxmoxCluster() ? t("cluster_warn") + "\n\n" : "";
+}
+
 document.getElementById("btn-add").onclick = () => openModal("modal-add");
 document.getElementById("btn-run-all").onclick = async () => {
-  if (!confirm(t("confirm_all"))) return;
+  if (!confirm(clusterPrefix() + t("confirm_all"))) return;
   try {
     const res = await api("POST", "/api/run-all");
     logLine(`<span class="ok">${esc(t("started_count", { n: res.count }))}</span>`);
@@ -175,7 +185,7 @@ document.getElementById("btn-run-all").onclick = async () => {
   }
 };
 document.getElementById("btn-run-all-full").onclick = async () => {
-  if (!confirm(t("confirm_all_full"))) return;
+  if (!confirm(clusterPrefix() + t("confirm_all_full"))) return;
   try {
     const res = await api("POST", "/api/run-all-full");
     logLine(`<span class="ok">${esc(t("started_count", { n: res.count }))}</span>`);
@@ -426,8 +436,14 @@ function connectWS() {
           const extra = (e.pending !== null && e.pending !== undefined)
             ? " " + t("job_pending", { n: e.pending }) : "";
           logLine(`<span class="m">[${esc(e.machine_name)}]</span> <span class="ok">${esc(t("job_done", { action: kindLabel(e.action) }) + extra)}</span>`);
+          if (e.reboot_required) {
+            logLine(`<span class="m">[${esc(e.machine_name)}]</span> <span class="ko">${esc(t("reboot_warn"))}</span>`);
+          }
         } else {
           logLine(`<span class="m">[${esc(e.machine_name)}]</span> <span class="ko">${esc(t("job_failed", { err: tServer(e.error) || t("unknown_error") }))}</span>`);
+          if (e.enterprise_error) {
+            logLine(`<span class="m">[${esc(e.machine_name)}]</span> <span class="ko">${esc(t("enterprise_warn"))}</span>`);
+          }
         }
         loadMachines();
       }

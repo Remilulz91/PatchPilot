@@ -334,8 +334,10 @@ async def api_test_machine(machine_id: int, user=Depends(csrf_protect)):
     machine = _get_machine(machine_id)
     result = await ssh_manager.test_machine(machine)
     if result.get("os_info"):
+        reboot = 1 if result.get("reboot_required") else 0
         with get_db() as db:
-            db.execute("UPDATE machines SET os_info = ? WHERE id = ?", (result["os_info"], machine_id))
+            db.execute("UPDATE machines SET os_info = ?, os_type = ?, reboot_required = ? WHERE id = ?",
+                       (result["os_info"], result.get("os_type"), reboot, machine_id))
     return result
 
 
@@ -547,7 +549,7 @@ async def _broadcast(event: dict):
         ws_clients.discard(ws)
 
 
-async def _run_job(job_id: str, machine, actions, kind: str):
+async def _run_job(job_id: str, machine, kind: str):
     jobs[job_id]["status"] = "running"
     await _broadcast({"type": "status", "job_id": job_id, "machine_id": machine["id"],
                       "machine_name": machine["name"], "action": kind, "status": "running"})
@@ -556,11 +558,18 @@ async def _run_job(job_id: str, machine, actions, kind: str):
         await _broadcast({"type": "line", "job_id": job_id, "machine_id": machine["id"],
                           "machine_name": machine["name"], "line": line})
 
-    result = await ssh_manager.run_sequence(machine, actions, on_line, count_after=True, learn=True)
+    result = await ssh_manager.run(machine, kind, on_line)
     status = "success" if result["ok"] else "error"
     jobs[job_id]["status"] = status
 
+    reboot = 1 if result.get("reboot_required") else (0 if result.get("reboot_required") is not None else None)
     with get_db() as db:
+        # Always refresh OS info / type / reboot flag when known.
+        if result.get("os_info"):
+            db.execute("UPDATE machines SET os_info = ?, os_type = ? WHERE id = ?",
+                       (result["os_info"], result.get("os_type"), machine["id"]))
+        if reboot is not None:
+            db.execute("UPDATE machines SET reboot_required = ? WHERE id = ?", (reboot, machine["id"]))
         if result.get("pending") is not None:
             db.execute(
                 "UPDATE machines SET last_action = ?, last_status = ?, "
@@ -575,7 +584,9 @@ async def _run_job(job_id: str, machine, actions, kind: str):
             )
     await _broadcast({"type": "status", "job_id": job_id, "machine_id": machine["id"],
                       "machine_name": machine["name"], "action": kind, "status": status,
-                      "pending": result.get("pending"), "error": result.get("error")})
+                      "pending": result.get("pending"), "error": result.get("error"),
+                      "reboot_required": bool(result.get("reboot_required")),
+                      "enterprise_error": bool(result.get("enterprise_error"))})
 
 
 def _machine_busy(machine_id: int) -> bool:
@@ -595,11 +606,11 @@ def _prune_jobs():
             jobs.pop(jid, None)
 
 
-def _start_job(machine, actions, kind: str) -> str:
+def _start_job(machine, kind: str) -> str:
     job_id = uuid.uuid4().hex[:12]
     jobs[job_id] = {"machine_id": machine["id"], "kind": kind,
                     "status": "pending", "started": time.time()}
-    task = asyncio.create_task(_run_job(job_id, machine, actions, kind))
+    task = asyncio.create_task(_run_job(job_id, machine, kind))
     _background_tasks.add(task)
     task.add_done_callback(lambda t: (_background_tasks.discard(t), _prune_jobs()))
     return job_id
@@ -607,11 +618,11 @@ def _start_job(machine, actions, kind: str) -> str:
 
 @app.post("/api/machines/{machine_id}/run")
 async def api_run(machine_id: int, user=Depends(csrf_protect)):
-    """Run the full maintenance sequence (update -> upgrade -> autoremove)."""
+    """Maintenance sequence (OS-aware: Proxmox uses full-upgrade)."""
     machine = _get_machine(machine_id)
     if _machine_busy(machine_id):
         raise HTTPException(status_code=409, detail="An update is already running on this machine")
-    return {"ok": True, "job_id": _start_job(machine, ssh_manager.SEQUENCE, "update")}
+    return {"ok": True, "job_id": _start_job(machine, "update")}
 
 
 @app.post("/api/machines/{machine_id}/run-full")
@@ -620,7 +631,7 @@ async def api_run_full(machine_id: int, user=Depends(csrf_protect)):
     machine = _get_machine(machine_id)
     if _machine_busy(machine_id):
         raise HTTPException(status_code=409, detail="An update is already running on this machine")
-    return {"ok": True, "job_id": _start_job(machine, ssh_manager.SEQUENCE_FULL, "full-update")}
+    return {"ok": True, "job_id": _start_job(machine, "full-update")}
 
 
 @app.post("/api/machines/{machine_id}/check")
@@ -629,33 +640,33 @@ async def api_check(machine_id: int, user=Depends(csrf_protect)):
     machine = _get_machine(machine_id)
     if _machine_busy(machine_id):
         raise HTTPException(status_code=409, detail="An update is already running on this machine")
-    return {"ok": True, "job_id": _start_job(machine, ssh_manager.CHECK, "check")}
+    return {"ok": True, "job_id": _start_job(machine, "check")}
 
 
-def _start_all(actions, kind: str) -> int:
+def _start_all(kind: str) -> int:
     with get_db() as db:
         machines = db.execute("SELECT * FROM machines ORDER BY name").fetchall()
     count = 0
     for m in machines:
         if not _machine_busy(m["id"]):
-            _start_job(m, actions, kind)
+            _start_job(m, kind)
             count += 1
     return count
 
 
 @app.post("/api/run-all")
 async def api_run_all(user=Depends(csrf_protect)):
-    return {"ok": True, "count": _start_all(ssh_manager.SEQUENCE, "update")}
+    return {"ok": True, "count": _start_all("update")}
 
 
 @app.post("/api/run-all-full")
 async def api_run_all_full(user=Depends(csrf_protect)):
-    return {"ok": True, "count": _start_all(ssh_manager.SEQUENCE_FULL, "full-update")}
+    return {"ok": True, "count": _start_all("full-update")}
 
 
 @app.post("/api/check-all")
 async def api_check_all(user=Depends(csrf_protect)):
-    return {"ok": True, "count": _start_all(ssh_manager.CHECK, "check")}
+    return {"ok": True, "count": _start_all("check")}
 
 
 # =====================================================================
@@ -723,7 +734,7 @@ async def _scheduler_loop():
                 with get_db() as db:
                     db.execute("UPDATE schedule SET last_run_date = ? WHERE id = 1",
                                (now.strftime("%Y-%m-%d"),))
-                n = _start_all(ssh_manager.SEQUENCE, "update")
+                n = _start_all("update")
                 await _broadcast({"type": "scheduled", "count": n,
                                   "at": now.strftime("%Y-%m-%d %H:%M")})
         except asyncio.CancelledError:

@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS machines (
     port            INTEGER NOT NULL DEFAULT 22,
     username        TEXT NOT NULL DEFAULT 'root',
     os_info         TEXT,
+    os_type         TEXT,
+    reboot_required INTEGER,
     last_action     TEXT,
     last_status     TEXT,
     last_run        TEXT,
@@ -101,8 +103,9 @@ def _migrate(db):
 
     # machines: add pending_updates column on older databases
     machine_cols = {r["name"] for r in db.execute("PRAGMA table_info(machines)").fetchall()}
-    if "pending_updates" not in machine_cols:
-        db.execute("ALTER TABLE machines ADD COLUMN pending_updates INTEGER")
+    for col in ("pending_updates INTEGER", "os_type TEXT", "reboot_required INTEGER"):
+        if col.split()[0] not in machine_cols:
+            db.execute(f"ALTER TABLE machines ADD COLUMN {col}")
 
 
 @contextmanager
