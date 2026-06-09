@@ -361,6 +361,62 @@ function connectWS() {
   setInterval(() => { if (ws.readyState === 1) ws.send("ping"); }, 30000);
 }
 
+// ---------- Docked console: collapse / resize / persist ----------
+
+(function setupConsoleDock() {
+  const dock = document.getElementById("console-dock");
+  const body = document.getElementById("console");
+  const toggleBtn = document.getElementById("btn-toggle-console");
+  const resizer = document.getElementById("console-resize");
+
+  function adjustPadding() {
+    document.body.style.paddingBottom = dock.offsetHeight + "px";
+  }
+
+  // Restore saved height
+  const h = parseInt(localStorage.getItem("pp_console_h") || "260", 10);
+  if (h >= 80 && h <= 800) body.style.height = h + "px";
+
+  // Restore collapsed state
+  if (localStorage.getItem("pp_console_collapsed") === "1") {
+    dock.classList.add("collapsed");
+    toggleBtn.textContent = "▴";
+  }
+
+  toggleBtn.onclick = () => {
+    const collapsed = dock.classList.toggle("collapsed");
+    toggleBtn.textContent = collapsed ? "▴" : "▾";
+    localStorage.setItem("pp_console_collapsed", collapsed ? "1" : "0");
+    adjustPadding();
+  };
+
+  document.getElementById("btn-clear-console").onclick = () => { body.innerHTML = ""; };
+
+  // Drag to resize
+  let resizing = false, startY = 0, startH = 0;
+  resizer.addEventListener("mousedown", (e) => {
+    resizing = true; startY = e.clientY; startH = body.offsetHeight;
+    document.body.style.userSelect = "none";
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!resizing) return;
+    let nh = startH + (startY - e.clientY);
+    nh = Math.max(80, Math.min(window.innerHeight - 160, nh));
+    body.style.height = nh + "px";
+    adjustPadding();
+  });
+  window.addEventListener("mouseup", () => {
+    if (!resizing) return;
+    resizing = false;
+    document.body.style.userSelect = "";
+    localStorage.setItem("pp_console_h", String(body.offsetHeight));
+  });
+
+  window.addEventListener("resize", adjustPadding);
+  window.addEventListener("pp-lang", adjustPadding);
+  adjustPadding();
+})();
+
 // ---------- Init ----------
 
 loadMe();

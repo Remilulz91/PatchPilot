@@ -35,6 +35,8 @@ const I18N = {
     th_actions: "Actions",
     empty: "No machines yet. Click “Add machine”, then authorize PatchPilot's SSH public key on it.",
     console_hint: "— Console: apt output will appear here in real time —",
+    console_label: "Console",
+    clear: "Clear",
 
     add_title: "Add a machine",
     name_label: "Name (label)",
@@ -144,6 +146,8 @@ const I18N = {
     th_actions: "Actions",
     empty: "Aucune machine. Cliquez sur « Ajouter une machine », puis autorisez la clé publique SSH de PatchPilot sur celle-ci.",
     console_hint: "— Console : la sortie apt s'affichera ici en temps réel —",
+    console_label: "Console",
+    clear: "Effacer",
 
     add_title: "Ajouter une machine",
     name_label: "Nom (libellé)",

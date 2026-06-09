@@ -50,9 +50,19 @@
       <tbody id="machines"></tbody>
     </table>
     <div class="empty" id="empty" style="display:none" data-i18n="empty"></div>
-
-    <div id="console"><div style="color:var(--muted)" data-i18n="console_hint"></div></div>
   </main>
+
+  <!-- Docked live console (fixed at the bottom of the viewport) -->
+  <div class="console-dock" id="console-dock">
+    <div class="console-resize" id="console-resize" title="↕"></div>
+    <div class="console-bar">
+      <span class="console-title">▍ <span data-i18n="console_label"></span></span>
+      <span style="flex:1"></span>
+      <button class="secondary small" id="btn-clear-console" data-i18n="clear"></button>
+      <button class="secondary small" id="btn-toggle-console" aria-label="toggle">▾</button>
+    </div>
+    <div id="console" class="console-body"><div style="color:var(--muted)" data-i18n="console_hint"></div></div>
+  </div>
 
   <!-- Add machine modal -->
   <div class="modal-bg" id="modal-add">
