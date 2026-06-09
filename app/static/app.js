@@ -192,6 +192,43 @@ async function loadMe() {
   } catch { /* ignore */ }
 }
 
+// ---------- Recovery codes ----------
+
+document.getElementById("btn-recovery").onclick = async () => {
+  document.getElementById("rc-manage").style.display = "block";
+  document.getElementById("rc-result").style.display = "none";
+  document.getElementById("rc-error").textContent = "";
+  document.getElementById("rc-code").value = "";
+  try {
+    const st = await api("GET", "/api/mfa/recovery/status");
+    document.getElementById("rc-remaining").textContent =
+      st.enabled ? t("rc_remaining", { n: st.remaining }) : t("rc_need_mfa");
+    document.getElementById("btn-regen").disabled = !st.enabled;
+  } catch { /* ignore */ }
+  openModal("modal-recovery");
+};
+
+document.getElementById("btn-regen").onclick = async () => {
+  const errEl = document.getElementById("rc-error");
+  errEl.textContent = "";
+  try {
+    const res = await api("POST", "/api/mfa/recovery/regenerate", {
+      code: document.getElementById("rc-code").value.trim(),
+    });
+    const grid = document.getElementById("rc-new-grid");
+    grid.innerHTML = "";
+    for (const c of res.recovery_codes) {
+      const span = document.createElement("span");
+      span.textContent = c;
+      grid.appendChild(span);
+    }
+    document.getElementById("btn-copy-newrc").onclick = () =>
+      navigator.clipboard.writeText(res.recovery_codes.join("\n"));
+    document.getElementById("rc-manage").style.display = "none";
+    document.getElementById("rc-result").style.display = "block";
+  } catch (err) { errEl.textContent = err.message; }
+};
+
 // ---------- Users management (admin) ----------
 
 document.getElementById("btn-users").onclick = async () => {

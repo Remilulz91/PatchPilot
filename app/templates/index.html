@@ -17,6 +17,7 @@
     <div class="actions">
       <span id="current-user" class="current-user"></span>
       <button class="secondary small" id="lang-toggle">FR</button>
+      <button class="secondary small" id="btn-recovery" data-i18n="recovery_codes_btn"></button>
       <button class="secondary small" id="btn-users" data-i18n="users" style="display:none"></button>
       <button class="secondary small" id="btn-pubkey" data-i18n="ssh_pubkey"></button>
       <button class="secondary small" id="btn-logout" data-i18n="logout"></button>
@@ -82,6 +83,35 @@
       <div class="btns">
         <button class="secondary" id="btn-copy-key" data-i18n="copy"></button>
         <button data-close data-i18n="close"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recovery codes modal (all users) -->
+  <div class="modal-bg" id="modal-recovery">
+    <div class="modal">
+      <h2 data-i18n="rc_manage_title"></h2>
+
+      <div id="rc-manage">
+        <p class="sub" id="rc-remaining"></p>
+        <p class="sub" data-i18n="rc_regen_hint"></p>
+        <label data-i18n="rc_confirm_label"></label>
+        <input id="rc-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456">
+        <p class="error-msg" id="rc-error"></p>
+        <div class="btns">
+          <button type="button" class="secondary" data-close data-i18n="cancel"></button>
+          <button type="button" id="btn-regen" data-i18n="rc_regenerate"></button>
+        </div>
+      </div>
+
+      <div id="rc-result" style="display:none">
+        <p class="sub" data-i18n="rc_intro"></p>
+        <div class="recovery-grid" id="rc-new-grid"></div>
+        <p class="recovery-warn" data-i18n="rc_warn"></p>
+        <div class="btns">
+          <button type="button" class="secondary" id="btn-copy-newrc" data-i18n="copy"></button>
+          <button type="button" data-close data-i18n="rc_continue"></button>
+        </div>
       </div>
     </div>
   </div>

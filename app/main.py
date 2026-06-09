@@ -348,6 +348,27 @@ def api_me(user=Depends(current_user)):
     return {"username": user["username"], "is_admin": bool(user["is_admin"])}
 
 
+@app.get("/api/mfa/recovery/status")
+def api_recovery_status(user=Depends(current_user)):
+    return {"enabled": bool(user["totp_enabled"]),
+            "remaining": auth.count_recovery_codes(user["id"])}
+
+
+class RegenBody(BaseModel):
+    code: str = Field(min_length=6, max_length=20)
+
+
+@app.post("/api/mfa/recovery/regenerate")
+def api_recovery_regenerate(body: RegenBody, user=Depends(csrf_protect)):
+    if not user["totp_enabled"]:
+        raise HTTPException(status_code=400, detail="MFA is not enabled")
+    # Re-confirm identity with a current TOTP code before invalidating old codes.
+    if not auth.verify_totp(user["totp_secret"], body.code):
+        raise HTTPException(status_code=401, detail="Invalid MFA code")
+    codes = auth.generate_recovery_codes(user["id"])
+    return {"ok": True, "recovery_codes": codes}
+
+
 # =====================================================================
 # API: user management (admin only)
 # =====================================================================

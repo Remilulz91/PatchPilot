@@ -76,6 +76,13 @@ const I18N = {
     rc_intro: "If you lose access to your authenticator app, each of these one-time codes lets you log in. Store them somewhere safe.",
     rc_warn: "They are shown only once. Each code works a single time.",
     rc_continue: "I saved them — continue",
+    recovery_codes_btn: "Recovery codes",
+    rc_manage_title: "Recovery codes",
+    rc_remaining: "Unused recovery codes left: {n}",
+    rc_regen_hint: "Regenerating creates 10 new codes and immediately invalidates all your previous ones.",
+    rc_confirm_label: "Enter a current MFA code to confirm",
+    rc_regenerate: "Regenerate",
+    rc_need_mfa: "Set up MFA first to get recovery codes.",
 
     users: "Users",
     users_title: "User management",
@@ -178,6 +185,13 @@ const I18N = {
     rc_intro: "Si vous perdez l'accès à votre application d'authentification, chacun de ces codes à usage unique vous permet de vous connecter. Conservez-les en lieu sûr.",
     rc_warn: "Ils ne sont affichés qu'une seule fois. Chaque code ne fonctionne qu'une fois.",
     rc_continue: "Je les ai enregistrés — continuer",
+    recovery_codes_btn: "Codes de secours",
+    rc_manage_title: "Codes de secours",
+    rc_remaining: "Codes de secours inutilisés restants : {n}",
+    rc_regen_hint: "La régénération crée 10 nouveaux codes et invalide immédiatement tous les précédents.",
+    rc_confirm_label: "Saisissez un code MFA actuel pour confirmer",
+    rc_regenerate: "Régénérer",
+    rc_need_mfa: "Configurez d'abord le MFA pour obtenir des codes de secours.",
 
     users: "Utilisateurs",
     users_title: "Gestion des utilisateurs",
@@ -226,6 +240,15 @@ const SERVER_MSG_FR = {
   "Invalid host (IP address or hostname expected)": "Hôte invalide (adresse IP ou nom d'hôte attendu)",
   "Invalid Unix username": "Nom d'utilisateur Unix invalide",
   "Action not allowed": "Action non autorisée",
+  "Administrator privileges required": "Privilèges administrateur requis",
+  "This username already exists": "Ce nom d'utilisateur existe déjà",
+  "User not found": "Utilisateur introuvable",
+  "Account not activated yet": "Compte pas encore activé",
+  "Invalid or expired activation link": "Lien d'activation invalide ou expiré",
+  "MFA is not enabled": "Le MFA n'est pas activé",
+  "Cannot delete the last administrator": "Impossible de supprimer le dernier administrateur",
+  "You cannot delete your own account": "Vous ne pouvez pas supprimer votre propre compte",
+  "This account is already active": "Ce compte est déjà actif",
 };
 
 let LANG = localStorage.getItem("pp_lang") ||
