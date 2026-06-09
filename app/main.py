@@ -614,6 +614,15 @@ async def api_run(machine_id: int, user=Depends(csrf_protect)):
     return {"ok": True, "job_id": _start_job(machine, ssh_manager.SEQUENCE, "update")}
 
 
+@app.post("/api/machines/{machine_id}/run-full")
+async def api_run_full(machine_id: int, user=Depends(csrf_protect)):
+    """Full sequence (update -> full-upgrade -> autoremove), installs held-back packages."""
+    machine = _get_machine(machine_id)
+    if _machine_busy(machine_id):
+        raise HTTPException(status_code=409, detail="An update is already running on this machine")
+    return {"ok": True, "job_id": _start_job(machine, ssh_manager.SEQUENCE_FULL, "full-update")}
+
+
 @app.post("/api/machines/{machine_id}/check")
 async def api_check(machine_id: int, user=Depends(csrf_protect)):
     """Refresh package lists and count pending updates (no changes applied)."""
@@ -637,6 +646,11 @@ def _start_all(actions, kind: str) -> int:
 @app.post("/api/run-all")
 async def api_run_all(user=Depends(csrf_protect)):
     return {"ok": True, "count": _start_all(ssh_manager.SEQUENCE, "update")}
+
+
+@app.post("/api/run-all-full")
+async def api_run_all_full(user=Depends(csrf_protect)):
+    return {"ok": True, "count": _start_all(ssh_manager.SEQUENCE_FULL, "full-update")}
 
 
 @app.post("/api/check-all")

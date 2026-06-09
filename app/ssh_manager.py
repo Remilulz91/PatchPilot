@@ -31,6 +31,8 @@ ACTIONS = {
 
 # Ordered maintenance sequence run by the "Update" button / scheduler.
 SEQUENCE = ["update", "upgrade", "autoremove"]
+# Full sequence: full-upgrade also installs held-back packages (may add/remove).
+SEQUENCE_FULL = ["update", "full-upgrade", "autoremove"]
 # Read-only check: refresh lists then count what would be upgraded.
 CHECK = ["update"]
 

@@ -1,7 +1,11 @@
 /* PatchPilot — dashboard */
 "use strict";
 
-function kindLabel(kind) { return kind === "check" ? t("kind_check") : t("kind_update"); }
+function kindLabel(kind) {
+  if (kind === "check") return t("kind_check");
+  if (kind === "full-update") return t("kind_full");
+  return t("kind_update");
+}
 const tbody = document.getElementById("machines");
 const emptyEl = document.getElementById("empty");
 const consoleEl = document.getElementById("console");
@@ -89,6 +93,7 @@ function render() {
       <td>
         <div class="row-actions">
           <button class="small" data-run="${m.id}" ${busy ? "disabled" : ""}>${t("run")}</button>
+          <button class="small secondary" data-runfull="${m.id}" ${busy ? "disabled" : ""}>${t("run_full")}</button>
           <button class="small secondary" data-check="${m.id}" ${busy ? "disabled" : ""}>${t("check")}</button>
           <button class="small danger" data-del="${m.id}">✕</button>
         </div>
@@ -135,6 +140,11 @@ tbody.addEventListener("click", async (e) => {
     if (btn.dataset.run) {
       const id = Number(btn.dataset.run);
       await api("POST", `/api/machines/${id}/run`);
+    } else if (btn.dataset.runfull) {
+      const id = Number(btn.dataset.runfull);
+      if (confirm(t("confirm_full", { name: machines.find(x => x.id === id).name }))) {
+        await api("POST", `/api/machines/${id}/run-full`);
+      }
     } else if (btn.dataset.check) {
       const id = Number(btn.dataset.check);
       await api("POST", `/api/machines/${id}/check`);
@@ -159,6 +169,15 @@ document.getElementById("btn-run-all").onclick = async () => {
   if (!confirm(t("confirm_all"))) return;
   try {
     const res = await api("POST", "/api/run-all");
+    logLine(`<span class="ok">${esc(t("started_count", { n: res.count }))}</span>`);
+  } catch (err) {
+    logLine(`<span class="ko">${esc(err.message)}</span>`);
+  }
+};
+document.getElementById("btn-run-all-full").onclick = async () => {
+  if (!confirm(t("confirm_all_full"))) return;
+  try {
+    const res = await api("POST", "/api/run-all-full");
     logLine(`<span class="ok">${esc(t("started_count", { n: res.count }))}</span>`);
   } catch (err) {
     logLine(`<span class="ko">${esc(err.message)}</span>`);
