@@ -2,11 +2,14 @@
 
 **Centralized update management for your Linux fleet, from a simple web interface.**
 
-PatchPilot connects to your **Debian / Ubuntu** machines over SSH (key-based) and runs — and only runs — these three commands:
+PatchPilot connects to your **Debian / Ubuntu** machines over SSH (key-based) and runs — and only runs — apt maintenance commands:
 
 - `apt update`
 - `apt upgrade`
 - `apt full-upgrade`
+- `apt autoremove`
+
+One click runs the full maintenance sequence in order: **update → upgrade → autoremove**.
 
 Update one machine with a single click, or the whole fleet at once, with real-time `apt` output in your browser.
 
@@ -15,7 +18,9 @@ Update one machine with a single click, or the whole fleet at once, with real-ti
 ## ✨ Features
 
 - **Dashboard**: machine list, detected OS, status and date of the last update
-- **One-click updates**: per machine, or an "Update all" button (parallel execution)
+- **One-click updates**: full maintenance sequence (update → upgrade → autoremove) per machine, or "Update all" (parallel execution)
+- **Pending-updates indicator**: a "Check" action refreshes package lists and shows how many updates are waiting per machine
+- **Scheduled updates**: admins can run the full sequence automatically on all machines, daily or weekly at a chosen time (in-app, no cron needed)
 - **Real-time logs**: apt output streams live to the browser via WebSocket
 - **Key-based SSH only**: dedicated ed25519 key, as root or a sudo-enabled user
 - **Language switch**: English / French interface (EN/FR button)

@@ -1,7 +1,7 @@
 /* PatchPilot — dashboard */
 "use strict";
 
-const ACTION_LABELS = { "update": "apt update", "upgrade": "apt upgrade", "full-upgrade": "apt full-upgrade" };
+function kindLabel(kind) { return kind === "check" ? t("kind_check") : t("kind_update"); }
 const tbody = document.getElementById("machines");
 const emptyEl = document.getElementById("empty");
 const consoleEl = document.getElementById("console");
@@ -56,6 +56,14 @@ function badge(m) {
   return `<span class="badge idle">${t("badge_never")}</span>`;
 }
 
+function pendingBadge(m) {
+  if (m.pending_updates === null || m.pending_updates === undefined)
+    return `<span class="badge idle">${t("pend_unknown")}</span>`;
+  if (m.pending_updates === 0)
+    return `<span class="badge success">${t("pend_uptodate")}</span>`;
+  return `<span class="badge running">${t("pend_count", { n: m.pending_updates })}</span>`;
+}
+
 let machines = [];
 
 async function loadMachines() {
@@ -69,20 +77,19 @@ function render() {
   for (const m of machines) {
     const busy = runningMachines.has(m.id);
     const tr = document.createElement("tr");
+    const lastTxt = m.last_action
+      ? esc(kindLabel(m.last_action)) + "<div class='host'>" + esc(m.last_run || "") + "</div>"
+      : "—";
     tr.innerHTML = `
       <td><b>${esc(m.name)}</b><div class="host">${esc(m.username)}@${esc(m.host)}:${m.port}</div></td>
       <td>${esc(m.os_info || "—")}</td>
+      <td>${pendingBadge(m)}</td>
       <td>${badge(m)}</td>
-      <td>${m.last_action ? esc(ACTION_LABELS[m.last_action] || m.last_action) + "<div class='host'>" + esc(m.last_run || "") + "</div>" : "—"}</td>
+      <td>${lastTxt}</td>
       <td>
         <div class="row-actions">
-          <select data-action-for="${m.id}">
-            <option value="update">apt update</option>
-            <option value="upgrade">apt upgrade</option>
-            <option value="full-upgrade">apt full-upgrade</option>
-          </select>
           <button class="small" data-run="${m.id}" ${busy ? "disabled" : ""}>${t("run")}</button>
-          <button class="small secondary" data-test="${m.id}">${t("test")}</button>
+          <button class="small secondary" data-check="${m.id}" ${busy ? "disabled" : ""}>${t("check")}</button>
           <button class="small danger" data-del="${m.id}">✕</button>
         </div>
       </td>`;
@@ -127,17 +134,10 @@ tbody.addEventListener("click", async (e) => {
   try {
     if (btn.dataset.run) {
       const id = Number(btn.dataset.run);
-      const action = document.querySelector(`select[data-action-for="${id}"]`).value;
-      await api("POST", `/api/machines/${id}/run`, { action });
-    } else if (btn.dataset.test) {
-      const id = Number(btn.dataset.test);
-      btn.disabled = true;
-      const res = await api("POST", `/api/machines/${id}/test`);
-      btn.disabled = false;
-      const m = machines.find(x => x.id === id);
-      if (res.ok) logLine(`<span class="m">[${esc(m.name)}]</span> <span class="ok">${esc(t("conn_ok", { os: res.os_info }))}</span>`);
-      else logLine(`<span class="m">[${esc(m.name)}]</span> <span class="ko">${esc(t("conn_fail", { err: tServer(res.error) }))}</span>`);
-      await loadMachines();
+      await api("POST", `/api/machines/${id}/run`);
+    } else if (btn.dataset.check) {
+      const id = Number(btn.dataset.check);
+      await api("POST", `/api/machines/${id}/check`);
     } else if (btn.dataset.del) {
       const id = Number(btn.dataset.del);
       const m = machines.find(x => x.id === id);
@@ -156,11 +156,18 @@ tbody.addEventListener("click", async (e) => {
 
 document.getElementById("btn-add").onclick = () => openModal("modal-add");
 document.getElementById("btn-run-all").onclick = async () => {
-  const action = document.getElementById("global-action").value;
-  if (!confirm(t("confirm_all", { action: ACTION_LABELS[action] }))) return;
+  if (!confirm(t("confirm_all"))) return;
   try {
-    const res = await api("POST", "/api/run-all", { action });
+    const res = await api("POST", "/api/run-all");
     logLine(`<span class="ok">${esc(t("started_count", { n: res.count }))}</span>`);
+  } catch (err) {
+    logLine(`<span class="ko">${esc(err.message)}</span>`);
+  }
+};
+document.getElementById("btn-check-all").onclick = async () => {
+  try {
+    const res = await api("POST", "/api/check-all");
+    logLine(`<span class="ok">${esc(t("started_check", { n: res.count }))}</span>`);
   } catch (err) {
     logLine(`<span class="ko">${esc(err.message)}</span>`);
   }
@@ -188,7 +195,10 @@ async function loadMe() {
     const el = document.getElementById("current-user");
     const role = me.is_admin ? " (admin)" : "";
     el.innerHTML = `<b>${esc(me.username)}</b>${esc(role)}`;
-    if (me.is_admin) document.getElementById("btn-users").style.display = "";
+    if (me.is_admin) {
+      document.getElementById("btn-users").style.display = "";
+      document.getElementById("btn-schedule").style.display = "";
+    }
   } catch { /* ignore */ }
 }
 
@@ -300,6 +310,50 @@ document.getElementById("btn-copy-invite").onclick = () => {
   navigator.clipboard.writeText(document.getElementById("invite-link").textContent);
 };
 
+// ---------- Scheduling (admin) ----------
+
+const scFreq = document.getElementById("sc-freq");
+const scWeekdayRow = document.getElementById("sc-weekday-row");
+
+function syncWeekdayRow() {
+  scWeekdayRow.style.display = scFreq.value === "weekly" ? "block" : "none";
+}
+scFreq.addEventListener("change", syncWeekdayRow);
+
+document.getElementById("btn-schedule").onclick = async () => {
+  document.getElementById("sched-error").textContent = "";
+  try {
+    const s = await api("GET", "/api/schedule");
+    document.getElementById("sc-enabled").checked = !!s.enabled;
+    scFreq.value = s.freq || "daily";
+    document.getElementById("sc-weekday").value = String(s.weekday ?? 0);
+    const hh = String(s.hour ?? 3).padStart(2, "0");
+    const mm = String(s.minute ?? 0).padStart(2, "0");
+    document.getElementById("sc-time").value = `${hh}:${mm}`;
+    syncWeekdayRow();
+    openModal("modal-schedule");
+  } catch (err) {
+    logLine(`<span class="ko">${esc(err.message)}</span>`);
+  }
+};
+
+document.getElementById("form-schedule").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("sched-error");
+  errEl.textContent = "";
+  const [hh, mm] = (document.getElementById("sc-time").value || "03:00").split(":");
+  try {
+    await api("POST", "/api/schedule", {
+      enabled: document.getElementById("sc-enabled").checked,
+      freq: scFreq.value,
+      hour: Number(hh), minute: Number(mm),
+      weekday: Number(document.getElementById("sc-weekday").value),
+    });
+    document.getElementById("modal-schedule").classList.remove("open");
+    logLine(`<span class="ok">${esc(t("sched_saved"))}</span>`);
+  } catch (err) { errEl.textContent = err.message; }
+});
+
 // ---------- Modals ----------
 
 function openModal(id) { document.getElementById(id).classList.add("open"); }
@@ -341,14 +395,18 @@ function connectWS() {
     const e = JSON.parse(ev.data);
     if (e.type === "line") {
       logLine(`<span class="m">[${esc(e.machine_name)}]</span> ${esc(e.line)}`);
+    } else if (e.type === "scheduled") {
+      logLine(`<span class="ok">${esc(t("sched_fired", { n: e.count, at: e.at }))}</span>`);
     } else if (e.type === "status") {
       if (e.status === "running") {
         runningMachines.add(e.machine_id);
-        logLine(`<span class="m">[${esc(e.machine_name)}]</span> <span class="ok">${esc(t("job_started", { action: ACTION_LABELS[e.action] }))}</span>`);
+        logLine(`<span class="m">[${esc(e.machine_name)}]</span> <span class="ok">${esc(t("job_started", { action: kindLabel(e.action) }))}</span>`);
       } else {
         runningMachines.delete(e.machine_id);
         if (e.status === "success") {
-          logLine(`<span class="m">[${esc(e.machine_name)}]</span> <span class="ok">${esc(t("job_done", { action: ACTION_LABELS[e.action] }))}</span>`);
+          const extra = (e.pending !== null && e.pending !== undefined)
+            ? " " + t("job_pending", { n: e.pending }) : "";
+          logLine(`<span class="m">[${esc(e.machine_name)}]</span> <span class="ok">${esc(t("job_done", { action: kindLabel(e.action) }) + extra)}</span>`);
         } else {
           logLine(`<span class="m">[${esc(e.machine_name)}]</span> <span class="ko">${esc(t("job_failed", { err: tServer(e.error) || t("unknown_error") }))}</span>`);
         }

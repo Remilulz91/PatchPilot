@@ -27,13 +27,9 @@
   <main>
     <div class="toolbar">
       <button id="btn-add" data-i18n="add_machine"></button>
+      <button class="secondary" id="btn-schedule" data-i18n="schedule_btn" style="display:none"></button>
       <span style="flex:1"></span>
-      <label style="color:var(--muted);font-size:.85rem" data-i18n="action"></label>
-      <select id="global-action">
-        <option value="update">apt update</option>
-        <option value="upgrade">apt upgrade</option>
-        <option value="full-upgrade">apt full-upgrade</option>
-      </select>
+      <button class="secondary" id="btn-check-all" data-i18n="check_all"></button>
       <button id="btn-run-all" data-i18n="update_all"></button>
     </div>
 
@@ -42,6 +38,7 @@
         <tr>
           <th data-i18n="th_machine"></th>
           <th data-i18n="th_os"></th>
+          <th data-i18n="th_updates"></th>
           <th data-i18n="th_status"></th>
           <th data-i18n="th_last"></th>
           <th data-i18n="th_actions"></th>
@@ -95,6 +92,47 @@
         <button data-close data-i18n="close"></button>
       </div>
     </div>
+  </div>
+
+  <!-- Schedule modal (admin only) -->
+  <div class="modal-bg" id="modal-schedule">
+    <form class="modal" id="form-schedule">
+      <h2 data-i18n="sched_title"></h2>
+      <p class="sub" data-i18n="sched_intro"></p>
+
+      <label class="u-admin-check"><input type="checkbox" id="sc-enabled"> <span data-i18n="sched_enable"></span></label>
+
+      <div id="sc-options">
+        <label data-i18n="sched_freq"></label>
+        <select id="sc-freq">
+          <option value="daily" data-i18n="sched_daily"></option>
+          <option value="weekly" data-i18n="sched_weekly"></option>
+        </select>
+
+        <div id="sc-weekday-row" style="display:none">
+          <label data-i18n="sched_day"></label>
+          <select id="sc-weekday">
+            <option value="0" data-i18n="day_mon"></option>
+            <option value="1" data-i18n="day_tue"></option>
+            <option value="2" data-i18n="day_wed"></option>
+            <option value="3" data-i18n="day_thu"></option>
+            <option value="4" data-i18n="day_fri"></option>
+            <option value="5" data-i18n="day_sat"></option>
+            <option value="6" data-i18n="day_sun"></option>
+          </select>
+        </div>
+
+        <label data-i18n="sched_time"></label>
+        <input type="time" id="sc-time" value="03:00">
+        <p class="sub" data-i18n="sched_tz"></p>
+      </div>
+
+      <p class="error-msg" id="sched-error"></p>
+      <div class="btns">
+        <button type="button" class="secondary" data-close data-i18n="cancel"></button>
+        <button type="submit" data-i18n="save"></button>
+      </div>
+    </form>
   </div>
 
   <!-- Recovery codes modal (all users) -->

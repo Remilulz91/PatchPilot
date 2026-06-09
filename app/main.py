@@ -7,6 +7,7 @@ import os
 import re
 import time
 import uuid
+from datetime import datetime
 
 import qrcode
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -546,38 +547,35 @@ async def _broadcast(event: dict):
         ws_clients.discard(ws)
 
 
-async def _run_job(job_id: str, machine, action: str):
+async def _run_job(job_id: str, machine, actions, kind: str):
     jobs[job_id]["status"] = "running"
     await _broadcast({"type": "status", "job_id": job_id, "machine_id": machine["id"],
-                      "machine_name": machine["name"], "action": action, "status": "running"})
+                      "machine_name": machine["name"], "action": kind, "status": "running"})
 
     async def on_line(line: str):
         await _broadcast({"type": "line", "job_id": job_id, "machine_id": machine["id"],
                           "machine_name": machine["name"], "line": line})
 
-    result = await ssh_manager.run_action(machine, action, on_line)
+    result = await ssh_manager.run_sequence(machine, actions, on_line, count_after=True, learn=True)
     status = "success" if result["ok"] else "error"
     jobs[job_id]["status"] = status
 
     with get_db() as db:
-        db.execute(
-            "UPDATE machines SET last_action = ?, last_status = ?, last_run = datetime('now', 'localtime') WHERE id = ?",
-            (action, status, machine["id"]),
-        )
+        if result.get("pending") is not None:
+            db.execute(
+                "UPDATE machines SET last_action = ?, last_status = ?, "
+                "last_run = datetime('now', 'localtime'), pending_updates = ? WHERE id = ?",
+                (kind, status, result["pending"], machine["id"]),
+            )
+        else:
+            db.execute(
+                "UPDATE machines SET last_action = ?, last_status = ?, "
+                "last_run = datetime('now', 'localtime') WHERE id = ?",
+                (kind, status, machine["id"]),
+            )
     await _broadcast({"type": "status", "job_id": job_id, "machine_id": machine["id"],
-                      "machine_name": machine["name"], "action": action, "status": status,
-                      "error": result.get("error")})
-
-
-class RunBody(BaseModel):
-    action: str
-
-    @field_validator("action")
-    @classmethod
-    def check_action(cls, v: str) -> str:
-        if v not in ssh_manager.ACTIONS:
-            raise ValueError("Action not allowed")
-        return v
+                      "machine_name": machine["name"], "action": kind, "status": status,
+                      "pending": result.get("pending"), "error": result.get("error")})
 
 
 def _machine_busy(machine_id: int) -> bool:
@@ -597,33 +595,134 @@ def _prune_jobs():
             jobs.pop(jid, None)
 
 
-def _start_job(machine, action: str) -> str:
+def _start_job(machine, actions, kind: str) -> str:
     job_id = uuid.uuid4().hex[:12]
-    jobs[job_id] = {"machine_id": machine["id"], "action": action,
+    jobs[job_id] = {"machine_id": machine["id"], "kind": kind,
                     "status": "pending", "started": time.time()}
-    task = asyncio.create_task(_run_job(job_id, machine, action))
+    task = asyncio.create_task(_run_job(job_id, machine, actions, kind))
     _background_tasks.add(task)
     task.add_done_callback(lambda t: (_background_tasks.discard(t), _prune_jobs()))
     return job_id
 
 
 @app.post("/api/machines/{machine_id}/run")
-async def api_run(machine_id: int, body: RunBody, user=Depends(csrf_protect)):
+async def api_run(machine_id: int, user=Depends(csrf_protect)):
+    """Run the full maintenance sequence (update -> upgrade -> autoremove)."""
     machine = _get_machine(machine_id)
     if _machine_busy(machine_id):
         raise HTTPException(status_code=409, detail="An update is already running on this machine")
-    return {"ok": True, "job_id": _start_job(machine, body.action)}
+    return {"ok": True, "job_id": _start_job(machine, ssh_manager.SEQUENCE, "update")}
+
+
+@app.post("/api/machines/{machine_id}/check")
+async def api_check(machine_id: int, user=Depends(csrf_protect)):
+    """Refresh package lists and count pending updates (no changes applied)."""
+    machine = _get_machine(machine_id)
+    if _machine_busy(machine_id):
+        raise HTTPException(status_code=409, detail="An update is already running on this machine")
+    return {"ok": True, "job_id": _start_job(machine, ssh_manager.CHECK, "check")}
+
+
+def _start_all(actions, kind: str) -> int:
+    with get_db() as db:
+        machines = db.execute("SELECT * FROM machines ORDER BY name").fetchall()
+    count = 0
+    for m in machines:
+        if not _machine_busy(m["id"]):
+            _start_job(m, actions, kind)
+            count += 1
+    return count
 
 
 @app.post("/api/run-all")
-async def api_run_all(body: RunBody, user=Depends(csrf_protect)):
+async def api_run_all(user=Depends(csrf_protect)):
+    return {"ok": True, "count": _start_all(ssh_manager.SEQUENCE, "update")}
+
+
+@app.post("/api/check-all")
+async def api_check_all(user=Depends(csrf_protect)):
+    return {"ok": True, "count": _start_all(ssh_manager.CHECK, "check")}
+
+
+# =====================================================================
+# Scheduling (admin) — runs the maintenance sequence on all machines
+# =====================================================================
+
+def get_schedule() -> dict:
     with get_db() as db:
-        machines = db.execute("SELECT * FROM machines ORDER BY name").fetchall()
-    started = []
-    for m in machines:
-        if not _machine_busy(m["id"]):
-            started.append(_start_job(m, body.action))
-    return {"ok": True, "job_ids": started, "count": len(started)}
+        row = db.execute("SELECT * FROM schedule WHERE id = 1").fetchone()
+    return dict(row) if row else {}
+
+
+class ScheduleBody(BaseModel):
+    enabled: bool = False
+    freq: str = "daily"
+    hour: int = Field(default=3, ge=0, le=23)
+    minute: int = Field(default=0, ge=0, le=59)
+    weekday: int = Field(default=0, ge=0, le=6)
+
+    @field_validator("freq")
+    @classmethod
+    def check_freq(cls, v: str) -> str:
+        if v not in ("daily", "weekly"):
+            raise ValueError("freq must be 'daily' or 'weekly'")
+        return v
+
+
+@app.get("/api/schedule")
+def api_get_schedule(admin=Depends(current_admin_get)):
+    s = get_schedule()
+    return {"enabled": bool(s.get("enabled")), "freq": s.get("freq", "daily"),
+            "hour": s.get("hour", 3), "minute": s.get("minute", 0),
+            "weekday": s.get("weekday", 0), "last_run_date": s.get("last_run_date", "")}
+
+
+@app.post("/api/schedule")
+def api_set_schedule(body: ScheduleBody, admin=Depends(current_admin)):
+    with get_db() as db:
+        db.execute(
+            "UPDATE schedule SET enabled = ?, freq = ?, hour = ?, minute = ?, weekday = ? WHERE id = 1",
+            (int(body.enabled), body.freq, body.hour, body.minute, body.weekday),
+        )
+    return {"ok": True}
+
+
+def _schedule_due(s: dict, now: datetime) -> bool:
+    if not s.get("enabled"):
+        return False
+    today = now.strftime("%Y-%m-%d")
+    if s.get("last_run_date") == today:
+        return False
+    if s.get("freq") == "weekly" and now.weekday() != s.get("weekday", 0):
+        return False
+    # Run once the scheduled time has passed for today.
+    return (now.hour, now.minute) >= (s.get("hour", 3), s.get("minute", 0))
+
+
+async def _scheduler_loop():
+    while True:
+        try:
+            await asyncio.sleep(45)
+            s = get_schedule()
+            now = datetime.now()  # server local time
+            if _schedule_due(s, now):
+                with get_db() as db:
+                    db.execute("UPDATE schedule SET last_run_date = ? WHERE id = 1",
+                               (now.strftime("%Y-%m-%d"),))
+                n = _start_all(ssh_manager.SEQUENCE, "update")
+                await _broadcast({"type": "scheduled", "count": n,
+                                  "at": now.strftime("%Y-%m-%d %H:%M")})
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Never let the scheduler die on a transient error.
+            pass
+
+
+@app.on_event("startup")
+async def _start_scheduler():
+    task = asyncio.create_task(_scheduler_loop())
+    _background_tasks.add(task)
 
 
 @app.websocket("/ws")

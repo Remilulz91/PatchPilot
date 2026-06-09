@@ -38,16 +38,17 @@ CREATE TABLE IF NOT EXISTS recovery_codes (
 );
 
 CREATE TABLE IF NOT EXISTS machines (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT NOT NULL,
-    host        TEXT NOT NULL,
-    port        INTEGER NOT NULL DEFAULT 22,
-    username    TEXT NOT NULL DEFAULT 'root',
-    os_info     TEXT,
-    last_action TEXT,
-    last_status TEXT,
-    last_run    TEXT,
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    host            TEXT NOT NULL,
+    port            INTEGER NOT NULL DEFAULT 22,
+    username        TEXT NOT NULL DEFAULT 'root',
+    os_info         TEXT,
+    last_action     TEXT,
+    last_status     TEXT,
+    last_run        TEXT,
+    pending_updates INTEGER,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(host, port, username)
 );
 
@@ -58,6 +59,17 @@ CREATE TABLE IF NOT EXISTS sessions (
     mfa_pending INTEGER NOT NULL DEFAULT 0,
     expires_at  REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS schedule (
+    id            INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled       INTEGER NOT NULL DEFAULT 0,
+    freq          TEXT NOT NULL DEFAULT 'daily',   -- 'daily' or 'weekly'
+    hour          INTEGER NOT NULL DEFAULT 3,
+    minute        INTEGER NOT NULL DEFAULT 0,
+    weekday       INTEGER NOT NULL DEFAULT 0,      -- 0=Monday .. 6=Sunday (weekly)
+    last_run_date TEXT NOT NULL DEFAULT ''
+);
+INSERT OR IGNORE INTO schedule (id) VALUES (1);
 """
 
 
@@ -86,6 +98,11 @@ def _migrate(db):
         row = db.execute("SELECT MIN(id) AS mid FROM users").fetchone()
         if row and row["mid"] is not None:
             db.execute("UPDATE users SET is_admin = 1 WHERE id = ?", (row["mid"],))
+
+    # machines: add pending_updates column on older databases
+    machine_cols = {r["name"] for r in db.execute("PRAGMA table_info(machines)").fetchall()}
+    if "pending_updates" not in machine_cols:
+        db.execute("ALTER TABLE machines ADD COLUMN pending_updates INTEGER")
 
 
 @contextmanager
