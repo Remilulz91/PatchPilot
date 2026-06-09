@@ -73,11 +73,18 @@ Lost authenticator? On the login page, after your password, click **Use a recove
 
 ```bash
 # As root:
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
 echo 'ssh-ed25519 AAAA... patchpilot@server' >> /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
 
-# Or for a regular user:
+# Or for a regular user (replace USER):
+mkdir -p /home/USER/.ssh && chmod 700 /home/USER/.ssh
 echo 'ssh-ed25519 AAAA... patchpilot@server' >> /home/USER/.ssh/authorized_keys
+chmod 600 /home/USER/.ssh/authorized_keys
+chown -R USER:USER /home/USER/.ssh
 ```
+
+> The `mkdir`/`chmod` lines make this work even when the `.ssh` directory does not exist yet (e.g. a freshly created user). Without them, the redirect would fail with “No such file or directory”.
 
 3. **For a non-root user**: allow only the 3 apt commands via passwordless sudo:
 
