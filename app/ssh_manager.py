@@ -41,6 +41,7 @@ _semaphore = asyncio.Semaphore(MAX_PARALLEL)
 
 # Read-only detection: base OS, Proxmox product + version, reboot-required.
 DETECT_CMD = r'''
+export LC_ALL=C
 . /etc/os-release 2>/dev/null; echo "BASE=$PRETTY_NAME"
 if command -v pveversion >/dev/null 2>&1; then
   echo "TYPE=pve"; echo "VER=$(pveversion 2>/dev/null | head -1)"
@@ -73,14 +74,17 @@ def build_command(action, username):
     cmd = f"DEBIAN_FRONTEND=noninteractive {base}"
     if username != "root":
         cmd = "sudo -n " + cmd
-    return cmd
+    # LC_ALL=C forces English apt output for a consistent console regardless of
+    # each machine's system locale (display only — does not change the machine).
+    # Locale variables survive sudo via its default env_keep.
+    return "LC_ALL=C " + cmd
 
 
 def _count_command(username):
     cmd = "apt-get -s -o Debug::NoLocking=true dist-upgrade"
     if username != "root":
         cmd = "sudo -n " + cmd
-    return cmd
+    return "LC_ALL=C " + cmd
 
 
 def _ver_after_slash(s):
