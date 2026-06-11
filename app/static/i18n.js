@@ -11,6 +11,7 @@ const I18N = {
     enter_mfa: "Enter your MFA code.",
     network_error: "Network error",
     error: "Error",
+    session_ended: "Your session ended. It may have expired, or your account signed in on another device.",
 
     mfa_title: "Set up your MFA",
     mfa_sub: "Scan this QR code with your authenticator app (Google Authenticator, Authy, 2FAS…) then enter the generated code.",
@@ -157,6 +158,7 @@ const I18N = {
     enter_mfa: "Saisissez votre code MFA.",
     network_error: "Erreur réseau",
     error: "Erreur",
+    session_ended: "Votre session a pris fin. Elle a peut-être expiré, ou votre compte s'est connecté sur un autre appareil.",
 
     mfa_title: "Configurez votre MFA",
     mfa_sub: "Scannez ce QR code avec votre application d'authentification (Google Authenticator, Authy, 2FAS…) puis saisissez le code généré.",

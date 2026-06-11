@@ -28,6 +28,7 @@ Update one machine with a single click, or the whole fleet at once, with real-ti
 - **Multi-user**: admins create accounts and share a one-time **activation link** (no mail server needed) — the invited user sets their own password, then their own MFA
 - **MFA recovery codes**: 10 single-use backup codes generated when MFA is enabled, to log in if the authenticator is lost
 - **Update check**: the dashboard shows whether your PatchPilot install is up to date against the latest GitHub release
+- **Single active session per user**: logging in on a new device automatically signs the account out everywhere else (last login wins)
 - **Security**: login + mandatory **TOTP MFA** (Google Authenticator, Authy…), bcrypt password hashing, server-side sessions with token rotation, **CSRF protection** (double-submit token + SameSite=Strict), **SSH host-key verification** (trust on first use), security headers (CSP, HSTS, X-Frame-Options), brute-force protection, **strict command whitelist** (no arbitrary command can ever be sent), parameterized SQL queries
 - **Automated installation**: one script, a few questions, and the site is online (HTTP, or HTTPS with Let's Encrypt)
 

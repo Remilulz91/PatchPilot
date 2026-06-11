@@ -769,6 +769,11 @@ async def ws_endpoint(websocket: WebSocket):
     try:
         while True:
             await websocket.receive_text()  # keepalive / content ignored
+            # Re-validate on each keepalive: if this session was invalidated
+            # (e.g. the user logged in elsewhere), drop the connection.
+            if auth.get_session(token) is None:
+                await websocket.close(code=4401)
+                break
     except WebSocketDisconnect:
         pass
     finally:

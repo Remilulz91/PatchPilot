@@ -67,6 +67,10 @@ def create_session(user_id: int, mfa_pending: bool) -> tuple[str, str]:
     ttl = MFA_PENDING_LIFETIME if mfa_pending else SESSION_LIFETIME
     with get_db() as db:
         db.execute("DELETE FROM sessions WHERE expires_at < ?", (time.time(),))
+        if not mfa_pending:
+            # Single active session per user (last login wins): a successful new
+            # login ends every other session this user has, on any device.
+            db.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
         db.execute(
             "INSERT INTO sessions (token_hash, csrf_token, user_id, mfa_pending, expires_at) "
             "VALUES (?, ?, ?, ?, ?)",

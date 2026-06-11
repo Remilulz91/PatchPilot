@@ -6,6 +6,11 @@ const totpBlock = document.getElementById('totp-block');
 const errEl = document.getElementById('error');
 const totpInput = document.getElementById('totp');
 
+// Explain why the user landed back here (session expired / signed in elsewhere).
+if (new URLSearchParams(window.location.search).get('expired')) {
+  errEl.textContent = t('session_ended');
+}
+
 // Toggle between 6-digit TOTP and a longer recovery code.
 let recoveryMode = false;
 document.getElementById('use-recovery').addEventListener('click', (e) => {

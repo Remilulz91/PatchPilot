@@ -26,7 +26,13 @@ async function api(method, url, body) {
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (r.status === 401) { window.location.href = "/login"; throw new Error("401"); }
+  if (r.status === 401) {
+    // If we still hold a CSRF cookie, the session was invalidated (expired or
+    // signed in elsewhere) rather than never being logged in.
+    const hadSession = document.cookie.includes("pp_csrf=");
+    window.location.href = hadSession ? "/login?expired=1" : "/login";
+    throw new Error("401");
+  }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
     // detail can be a string or a pydantic validation error array
@@ -450,7 +456,10 @@ function connectWS() {
       render();
     }
   };
-  ws.onclose = () => setTimeout(connectWS, 3000);
+  ws.onclose = (ev) => {
+    if (ev && ev.code === 4401) { window.location.href = "/login?expired=1"; return; }
+    setTimeout(connectWS, 3000);
+  };
   setInterval(() => { if (ws.readyState === 1) ws.send("ping"); }, 30000);
 }
 
